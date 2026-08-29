@@ -40,6 +40,22 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle bad request exceptions → 400.
+     */
+    @ExceptionHandler({BadRequestException.class, IllegalArgumentException.class})
+    public ResponseEntity<ApiError> handleBadRequest(Exception ex) {
+        log.warn("Bad request: {}", ex.getMessage());
+
+        ApiError error = ApiError.builder()
+                .status(HttpStatus.BAD_REQUEST.value())
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+
+    /**
      * Handle Bean Validation failures on @Valid @RequestBody → 400.
      */
     @ExceptionHandler(MethodArgumentNotValidException.class)
