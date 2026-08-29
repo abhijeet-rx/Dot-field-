@@ -1,0 +1,100 @@
+#!/bin/sh
+# ----------------------------------------------------------------------------
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#    https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+# ----------------------------------------------------------------------------
+
+# ----------------------------------------------------------------------------
+# Apache Maven Wrapper startup batch script, version 3.3.2
+#
+# Optional ENV vars
+#   MVNW_REPOURL - repo url base for downloading maven distribution
+#   MVNW_USERNAME/MVNW_PASSWORD - user and password for downloading maven
+#   MVNW_VERBOSE - true: emit additional debug output; false or unset: silent
+# ----------------------------------------------------------------------------
+
+set -euf
+[ "${MVNW_VERBOSE-}" != true ] || set -x
+
+# OS specific support.
+native_path() { printf %s\\n "$1"; }
+case "$(uname)" in
+  CYGWIN* | MINGW*)
+    [ -z "${JAVA_HOME-}" ] || JAVA_HOME="$(cygpath --unix "$JAVA_HOME")"
+    native_path() { cygpath --path --windows "$1"; }
+    ;;
+esac
+
+# Resolve symlinks and canonicalize the path
+readonly scriptDir="$(
+  cd -- "$(dirname -- "$0")"
+  pwd -P
+)"
+
+readonly distributionUrl="$(
+  awk -F '=' '/^distributionUrl=/ { print $2 }' "${scriptDir}/.mvn/wrapper/maven-wrapper.properties" |
+    sed 's/\\:/:/g'
+)"
+
+# Determine the Java command to use to start the JVM.
+readonly javaExe="${JAVA_HOME:+${JAVA_HOME}/bin/}java"
+
+# If the wrapper jar exists, use it directly.
+readonly wrapperJar="${scriptDir}/.mvn/wrapper/maven-wrapper.jar"
+if [ -f "$wrapperJar" ]; then
+  exec "$javaExe" \
+    ${MAVEN_OPTS-} \
+    -cp "$(native_path "$wrapperJar")" \
+    org.apache.maven.wrapper.MavenWrapperMain "$@"
+fi
+
+# Otherwise, download the wrapper jar and use it.
+readonly wrapperUrl="${MVNW_REPOURL-https://repo.maven.apache.org/maven2}/org/apache/maven/wrapper/maven-wrapper/3.3.2/maven-wrapper-3.3.2.jar"
+while IFS="=" read -r key value; do
+  case "${key-}" in wrapperUrl) wrapperUrl="${value}"; break ;; esac
+done <"${scriptDir}/.mvn/wrapper/maven-wrapper.properties"
+
+readonly MVNW_CACHE_DIR="${XDG_CACHE_HOME-${HOME}/.cache}/mvnw"
+mkdir -p "$MVNW_CACHE_DIR"
+readonly cachedWrapperJar="$MVNW_CACHE_DIR/wrapper.jar"
+
+if [ ! -f "$cachedWrapperJar" ]; then
+  if command -v wget >/dev/null 2>&1; then
+    [ "${MVNW_VERBOSE-}" != true ] || echo "Downloading $wrapperUrl" >&2
+    if [ -z "${MVNW_USERNAME-}" ] || [ -z "${MVNW_PASSWORD-}" ]; then
+      wget -q -O "$cachedWrapperJar" "$wrapperUrl"
+    else
+      wget -q --http-user="$MVNW_USERNAME" --http-password="$MVNW_PASSWORD" -O "$cachedWrapperJar" "$wrapperUrl"
+    fi
+  elif command -v curl >/dev/null 2>&1; then
+    [ "${MVNW_VERBOSE-}" != true ] || echo "Downloading $wrapperUrl" >&2
+    if [ -z "${MVNW_USERNAME-}" ] || [ -z "${MVNW_PASSWORD-}" ]; then
+      curl -fsSL -o "$cachedWrapperJar" "$wrapperUrl"
+    else
+      curl -fsSL --user "${MVNW_USERNAME}:${MVNW_PASSWORD}" -o "$cachedWrapperJar" "$wrapperUrl"
+    fi
+  else
+    echo "Could not find wget or curl to download the Maven wrapper." >&2
+    exit 1
+  fi
+fi
+
+exec "$javaExe" \
+  ${MAVEN_OPTS-} \
+  --add-opens java.base/java.util=ALL-UNNAMED \
+  -cp "$(native_path "$cachedWrapperJar")" \
+  org.apache.maven.wrapper.MavenWrapperMain -d "$distributionUrl" "$@"
