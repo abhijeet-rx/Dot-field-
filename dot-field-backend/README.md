@@ -248,6 +248,126 @@ dot-field-backend/
 
 ---
 
+## API Documentation — Phase 6 Resume Tailoring
+
+### Base Path: `/api`
+
+### Tailoring Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`  | `/api/jobs/{id}/resume/tailor` | Generate a job-specific tailored resume representation |
+
+---
+
+### Tailoring Engine Architecture & Constraints
+
+- **Definition of Tailoring:** Resume Tailoring = selecting + prioritizing + ordering + emphasizing + job-keyword alignment + structured presentation.
+- **Source-Traceability Rule:** Every factual statement in the tailored resume must trace directly to existing candidate profile fields. Unsupported information is omitted.
+- **Anti-Fabrication Guarantee:** Zero invention of skills, metrics ("40% improvement"), achievements, job titles, technologies, or projects. Missing job skills are never inserted as candidate skills.
+- **Deterministic Project Relevance Scoring Formula:**
+  $$\text{projectScore} = (\text{matchedRequiredSkills} \times 3) + (\text{matchedPreferredSkills} \times 2) + (\text{otherMatchedKeywords} \times 1)$$
+- **Experience & Bullet Prioritization:** Strict reverse chronological order across experiences. Intra-experience bullet lines are ranked by job keyword relevance while preserving exact original wording.
+- **Non-Persisted & 100% Deterministic:** Derived on-demand dynamically without database persistence or external LLM/AI services. Same `Profile + Job` inputs always produce identical results.
+
+#### Example Tailored Resume Response (`GET /api/jobs/1/resume/tailor`)
+
+```json
+{
+  "data": {
+    "jobId": 1,
+    "profileId": 1,
+    "summary": "Software Engineer with experience in Java, Spring Boot. Previously worked at Acme Corp.",
+    "skills": {
+      "primary": [
+        "Java",
+        "Spring Boot"
+      ],
+      "secondary": [
+        "Git"
+      ]
+    },
+    "experience": [
+      {
+        "id": 10,
+        "company": "Acme Corp",
+        "role": "Software Engineer",
+        "description": "Developed backend APIs using Java.\nIntegrated PostgreSQL database.",
+        "startDate": "2022-01-01",
+        "endDate": null,
+        "emphasized": true,
+        "matchingKeywords": [
+          "java",
+          "postgresql"
+        ]
+      }
+    ],
+    "education": [
+      {
+        "id": 5,
+        "institution": "State University",
+        "degree": "Bachelor of Science",
+        "fieldOfStudy": "Computer Science",
+        "startDate": "2018-09-01",
+        "endDate": "2022-05-31",
+        "grade": "3.8",
+        "emphasized": true
+      }
+    ],
+    "projects": [
+      {
+        "id": 20,
+        "name": "Backend API Service",
+        "description": "RESTful service built with Spring Boot",
+        "githubUrl": "https://github.com/candidate/api",
+        "liveUrl": null,
+        "technologies": [
+          "Java",
+          "Spring Boot"
+        ],
+        "projectScore": 5,
+        "emphasized": true,
+        "matchingKeywords": [
+          "java",
+          "spring boot"
+        ]
+      }
+    ],
+    "links": [
+      {
+        "type": "GitHub",
+        "url": "https://github.com/candidate"
+      }
+    ],
+    "tailoringAnalysis": {
+      "emphasizedSkills": [
+        "Java",
+        "Spring Boot"
+      ],
+      "emphasizedExperiences": [
+        "Software Engineer at Acme Corp"
+      ],
+      "emphasizedProjects": [
+        "Backend API Service"
+      ],
+      "matchedKeywords": [
+        "java",
+        "spring boot",
+        "postgresql"
+      ],
+      "unusedJobKeywords": [
+        "aws",
+        "kubernetes"
+      ],
+      "tailoringNotes": "Emphasized 2 primary skills, 1 experience entries, and 1 projects."
+    }
+  },
+  "message": "Resume tailored successfully"
+}
+```
+
+---
+
 ## API Response Format
 
 ### Success
@@ -274,28 +394,27 @@ dot-field-backend/
 ## Current Phase
 
 ```
-Phase 5 — Job Analysis & Matching
+Phase 6 — Resume Tailoring
 Status: Complete
 ```
 
-### What's included in Phase 5
+### What's included in Phase 6
 
-- ✅ Reused Phase 2 Candidate `Profile` & Phase 3 `Job` domain entities without modification
-- ✅ Deterministic heuristic requirement extraction (`JobRequirementExtractor`)
-- ✅ Centralized skill normalization with safe alias resolution (`SkillNormalizationUtil`)
-- ✅ Strict non-equivalence checks (`Java` != `JavaScript`, `React` != `React Native`)
-- ✅ Skill matching distinguishing required (70%) vs. preferred (30%) skills (`SkillMatcher`)
-- ✅ Experience duration calculation & minimum years evaluation (`ExperienceMatcher`)
-- ✅ Degree level & field compatibility matching (`EducationMatcher`)
-- ✅ Remote and physical location compatibility matching (`LocationMatcher`)
-- ✅ Mathematical score calculation with dynamic weight redistribution for `UNKNOWN` dimensions (`MatchScoreCalculator`)
-- ✅ `0 <= overallScore <= 100` score bounds and integer rounding
-- ✅ Match category classification (`STRONG_MATCH`, `GOOD_MATCH`, `PARTIAL_MATCH`, `WEAK_MATCH`)
-- ✅ Data-driven explainability builder for strengths and gaps (`MatchExplanationBuilder`)
-- ✅ Dynamic on-demand analysis orchestration service (`JobMatchingService`)
-- ✅ `GET /api/jobs/{id}/match` REST endpoint in `JobController`
-- ✅ Unit & Integration test suite (`SkillNormalizationUtilTest`, `JobRequirementExtractorTest`, `SkillMatcherTest`, `ExperienceMatcherTest`, `EducationMatcherTest`, `LocationMatcherTest`, `MatchScoreCalculatorTest`, `JobMatchingServiceTest`, `JobMatchingControllerTest`)
-- ✅ 101 total passing automated tests across Phase 1, 2, 3, 4, and 5
+- ✅ Reused Phase 2 Candidate `Profile` & Phase 3 `Job` domain entities without duplicate models
+- ✅ Reused Phase 5 requirement extraction (`JobRequirementExtractor`) & normalization (`SkillNormalizationUtil`)
+- ✅ 100% deterministic tailoring engine (`ResumeTailoringEngine`)
+- ✅ Precise keyword selector separating matched vs unused keywords (`ResumeKeywordSelector`)
+- ✅ Primary vs. secondary skills builder with zero missing-skill insertion (`ResumeSectionBuilder`)
+- ✅ Strict reverse chronological experience ordering with intra-experience bullet prioritization (`ResumeExperiencePrioritizer`)
+- ✅ Deterministic project relevance scoring formula & stable tie-breaking (`ResumeSectionBuilder`)
+- ✅ Education & social link extraction preserving factual candidate data
+- ✅ Strict source-traceable summary generator (`ResumeSummaryGenerator`)
+- ✅ Explainability metadata breakdown in `tailoringAnalysis`
+- ✅ Dynamic on-demand orchestration service (`ResumeTailoringService`)
+- ✅ `GET /api/jobs/{id}/resume/tailor` REST endpoint in `ResumeTailoringController`
+- ✅ Adversarial anti-fabrication test suite (missing skills, title inflation, unsupported tech, fake metrics, fake achievements, fake projects)
+- ✅ Determinism test suite & empty profile safety tests
+- ✅ 134 total passing automated tests across Phase 1, 2, 3, 4, 5, and 6
 
 ---
 
@@ -308,7 +427,7 @@ Status: Complete
 | 3     | Job Management            | ✅ Complete  |
 | 4     | Job Extraction & Ingestion| ✅ Complete  |
 | 5     | Job Analysis & Matching   | ✅ Complete  |
-| 6     | Resume Tailoring          | ⏳ Next      |
+| 6     | Resume Tailoring          | ✅ Complete  |
 
 ---
 
