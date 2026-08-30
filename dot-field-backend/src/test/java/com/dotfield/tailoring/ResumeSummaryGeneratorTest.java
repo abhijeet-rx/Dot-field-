@@ -49,16 +49,46 @@ class ResumeSummaryGeneratorTest {
 
         // Anti-fabrication check: no claims of "40% performance improvement" or "seniority"
         assertFalse(summary.contains("40%"));
-        assertFalse(summary.contains("senior"));
+        assertFalse(summary.contains("Senior"));
     }
 
     @Test
-    void generateSummary_minimalProfile_returnsSafeSummary() {
+    void generateSummary_emptyProfile_returnsNullWithoutFabricatedRole() {
         Profile profile = Profile.builder().build();
 
         String summary = summaryGenerator.generateSummary(profile, List.of());
 
-        assertEquals("Software developer.", summary);
+        assertNull(summary);
+    }
+
+    @Test
+    void generateSummary_noRoleInExperience_returnsNullWithoutFabricatedRole() {
+        Profile profile = Profile.builder()
+                .experience(List.of(
+                        Experience.builder().company("Acme Inc").build()
+                ))
+                .build();
+
+        String summary = summaryGenerator.generateSummary(profile, List.of("Java"));
+
+        assertNull(summary);
+    }
+
+    @Test
+    void generateSummary_doesNotInflateRoleToTargetJobTitle() {
+        Profile profile = Profile.builder()
+                .experience(List.of(
+                        Experience.builder()
+                                .role("Software Engineer")
+                                .company("Tech Corp")
+                                .build()
+                ))
+                .build();
+
+        String summary = summaryGenerator.generateSummary(profile, List.of("Java"));
+
+        assertTrue(summary.contains("Software Engineer"));
+        assertFalse(summary.contains("Senior Backend Engineer"));
     }
 
 }

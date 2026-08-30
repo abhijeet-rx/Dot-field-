@@ -88,11 +88,11 @@ public class ResumeKeywordSelector {
             boolean matched = candidateNormalizedSkills.contains(jobKeyword);
 
             if (!matched && profile != null && profile.getExperience() != null) {
-                String termLower = jobKeyword.toLowerCase(Locale.ROOT);
                 for (Experience exp : profile.getExperience()) {
-                    String role = exp.getRole() != null ? exp.getRole().toLowerCase(Locale.ROOT) : "";
-                    String desc = exp.getDescription() != null ? exp.getDescription().toLowerCase(Locale.ROOT) : "";
-                    if (role.contains(termLower) || desc.contains(termLower)) {
+                    String role = exp.getRole();
+                    String desc = exp.getDescription();
+                    if (SkillNormalizationUtil.containsKeyword(role, jobKeyword) ||
+                        SkillNormalizationUtil.containsKeyword(desc, jobKeyword)) {
                         matched = true;
                         break;
                     }

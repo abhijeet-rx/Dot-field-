@@ -25,31 +25,26 @@ class ResumeSectionBuilderTest {
     }
 
     @Test
-    void buildSkills_prioritizesRequiredThenPreferredThenOther() {
+    void buildSkills_preservesOriginalCandidateSkillNames() {
         Profile profile = Profile.builder()
                 .skills(List.of(
-                        Skill.builder().name("Git").build(),
-                        Skill.builder().name("Java").build(),
-                        Skill.builder().name("Spring Boot").build(),
-                        Skill.builder().name("PostgreSQL").build()
+                        Skill.builder().name("Postgres").build(),
+                        Skill.builder().name("Git").build()
                 ))
                 .build();
 
         ResumeKeywordSelector.KeywordResult kwResult = new ResumeKeywordSelector.KeywordResult(
-                Set.of("java", "spring boot", "postgresql"),
-                Set.of("aws"),
-                Set.of("java"),
-                Set.of("spring boot"),
-                Set.of("git", "java", "spring boot", "postgresql")
+                Set.of("postgresql"),
+                Set.of(),
+                Set.of("postgresql"),
+                Set.of(),
+                Set.of("postgresql", "git")
         );
 
         TailoredSkillsResponse skills = sectionBuilder.buildSkills(profile, kwResult);
 
-        assertEquals(List.of("Java", "Spring Boot", "PostgreSQL"), skills.getPrimary());
+        assertEquals(List.of("Postgres"), skills.getPrimary());
         assertEquals(List.of("Git"), skills.getSecondary());
-        // Verify missing job skill AWS is not added
-        assertFalse(skills.getPrimary().contains("AWS"));
-        assertFalse(skills.getSecondary().contains("AWS"));
     }
 
     @Test
@@ -91,12 +86,63 @@ class ResumeSectionBuilderTest {
     }
 
     @Test
-    void buildEducation_emphasizesMatchingDegreeOrField() {
+    void buildProjects_javaScriptTechnology_doesNotReceivePointsForJava() {
+        Project proj = Project.builder()
+                .id(1L)
+                .name("Frontend Dashboard")
+                .technologies(List.of("JavaScript"))
+                .build();
+
+        Profile profile = Profile.builder()
+                .projects(List.of(proj))
+                .build();
+
+        ResumeKeywordSelector.KeywordResult kwResult = new ResumeKeywordSelector.KeywordResult(
+                Set.of("java"),
+                Set.of("java"),
+                Set.of("java"),
+                Set.of(),
+                Set.of("javascript")
+        );
+
+        List<TailoredProjectResponse> projects = sectionBuilder.buildProjects(profile, kwResult);
+
+        assertEquals(1, projects.size());
+        assertEquals(0, projects.get(0).getProjectScore());
+        assertFalse(projects.get(0).isEmphasized());
+    }
+
+    @Test
+    void buildEducation_bachelorReq_masterCand_emphasized() {
         Education edu = Education.builder()
                 .id(1L)
                 .institution("State University")
-                .degree("Bachelor of Science")
+                .degree("Master of Science")
                 .fieldOfStudy("Computer Science")
+                .build();
+
+        Profile profile = Profile.builder()
+                .education(List.of(edu))
+                .build();
+
+        JobRequirements reqs = JobRequirements.builder()
+                .requiredEducationLevel(DegreeLevel.BACHELOR)
+                .build();
+
+        List<TailoredEducationResponse> education = sectionBuilder.buildEducation(profile, reqs);
+
+        assertEquals(1, education.size());
+        assertTrue(education.get(0).isEmphasized());
+        assertEquals("Master of Science", education.get(0).getDegree());
+    }
+
+    @Test
+    void buildEducation_unrelatedEducation_notEmphasized() {
+        Education edu = Education.builder()
+                .id(1L)
+                .institution("Art Institute")
+                .degree("Diploma")
+                .fieldOfStudy("Graphic Arts")
                 .build();
 
         Profile profile = Profile.builder()
@@ -111,8 +157,7 @@ class ResumeSectionBuilderTest {
         List<TailoredEducationResponse> education = sectionBuilder.buildEducation(profile, reqs);
 
         assertEquals(1, education.size());
-        assertTrue(education.get(0).isEmphasized());
-        assertEquals("Bachelor of Science", education.get(0).getDegree());
+        assertFalse(education.get(0).isEmphasized());
     }
 
     @Test

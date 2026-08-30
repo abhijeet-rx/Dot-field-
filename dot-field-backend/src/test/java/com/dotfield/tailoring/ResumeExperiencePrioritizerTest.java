@@ -52,18 +52,20 @@ class ResumeExperiencePrioritizerTest {
 
     @Test
     void prioritizeExperience_prioritizesMatchingBullets_withoutTextAlteration() {
-        String desc = "Implemented CI/CD pipelines.\nDeveloped backend APIs using Spring Boot and PostgreSQL.\nCreated UI components in HTML.";
+        String line1 = "Worked with documentation.";
+        String line2 = "Built Java backend services.";
+        String line3 = "Attended meetings.";
 
         Experience exp = Experience.builder()
                 .id(1L)
                 .role("Software Engineer")
                 .company("Tech Corp")
-                .description(desc)
+                .description(line1 + "\n" + line2 + "\n" + line3)
                 .build();
 
         List<TailoredExperienceResponse> result = prioritizer.prioritizeExperience(
                 List.of(exp),
-                Set.of("spring boot", "postgresql")
+                Set.of("java")
         );
 
         assertEquals(1, result.size());
@@ -71,7 +73,30 @@ class ResumeExperiencePrioritizerTest {
         assertTrue(tailoredExp.isEmphasized());
 
         String[] lines = tailoredExp.getDescription().split("\n");
-        assertEquals("Developed backend APIs using Spring Boot and PostgreSQL.", lines[0]);
+        assertEquals(3, lines.length);
+        assertEquals("Built Java backend services.", lines[0]);
+        assertEquals("Worked with documentation.", lines[1]);
+        assertEquals("Attended meetings.", lines[2]);
+    }
+
+    @Test
+    void prioritizeExperience_javaNotMatchedInJavaScriptBullet() {
+        String line1 = "Built frontend components in JavaScript.";
+
+        Experience exp = Experience.builder()
+                .id(1L)
+                .role("Frontend Dev")
+                .company("Web Co")
+                .description(line1)
+                .build();
+
+        List<TailoredExperienceResponse> result = prioritizer.prioritizeExperience(
+                List.of(exp),
+                Set.of("java")
+        );
+
+        assertFalse(result.get(0).isEmphasized());
+        assertTrue(result.get(0).getMatchingKeywords().isEmpty());
     }
 
     @Test

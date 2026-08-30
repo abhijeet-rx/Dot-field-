@@ -112,8 +112,10 @@ class ResumeTailoringEngineTest {
 
         TailoredResumeResponse response = engine.tailor(profile, job, reqs);
 
-        assertFalse(response.getSummary().contains("40%"));
-        assertFalse(response.getSummary().contains("performance"));
+        if (response.getSummary() != null) {
+            assertFalse(response.getSummary().contains("40%"));
+            assertFalse(response.getSummary().contains("performance"));
+        }
         assertFalse(response.getExperience().get(0).getDescription().contains("40%"));
         assertFalse(response.getExperience().get(0).getDescription().contains("improved"));
     }
@@ -179,7 +181,7 @@ class ResumeTailoringEngineTest {
     }
 
     @Test
-    void testEmptyAndPartialProfile_doesNotCrash() {
+    void testEmptyAndPartialProfile_doesNotCrash_summaryIsNull() {
         Profile emptyProfile = Profile.builder().id(1L).name("Bob").build();
         Job job = Job.builder().id(200L).title("Software Engineer").build();
         JobRequirements reqs = JobRequirements.builder().requiredSkills(Set.of("java")).build();
@@ -189,6 +191,7 @@ class ResumeTailoringEngineTest {
         assertNotNull(response);
         assertEquals(200L, response.getJobId());
         assertEquals(1L, response.getProfileId());
+        assertNull(response.getSummary()); // No invented Software developer role!
         assertTrue(response.getSkills().getPrimary().isEmpty());
         assertTrue(response.getSkills().getSecondary().isEmpty());
         assertTrue(response.getExperience().isEmpty());

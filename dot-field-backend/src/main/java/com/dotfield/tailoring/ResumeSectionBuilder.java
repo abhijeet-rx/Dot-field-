@@ -11,7 +11,6 @@ import com.dotfield.matching.SkillNormalizationUtil;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Component
 public class ResumeSectionBuilder {
@@ -26,11 +25,9 @@ public class ResumeSectionBuilder {
 
         Set<String> matchedReq = keywordResult.requiredKeywords();
         Set<String> matchedPref = keywordResult.preferredKeywords();
-        Set<String> allMatched = keywordResult.matchedKeywords();
 
         List<String> primaryReq = new ArrayList<>();
         List<String> primaryPref = new ArrayList<>();
-        List<String> primaryOther = new ArrayList<>();
         List<String> secondary = new ArrayList<>();
 
         Set<String> seenNormalizedPrimary = new HashSet<>();
@@ -52,10 +49,6 @@ public class ResumeSectionBuilder {
                 if (seenNormalizedPrimary.add(normName)) {
                     primaryPref.add(rawName);
                 }
-            } else if (allMatched.contains(normName)) {
-                if (seenNormalizedPrimary.add(normName)) {
-                    primaryOther.add(rawName);
-                }
             } else {
                 secondary.add(rawName);
             }
@@ -64,7 +57,6 @@ public class ResumeSectionBuilder {
         List<String> primary = new ArrayList<>();
         primary.addAll(primaryReq);
         primary.addAll(primaryPref);
-        primary.addAll(primaryOther);
 
         return TailoredSkillsResponse.builder()
                 .primary(Collections.unmodifiableList(primary))
@@ -100,14 +92,14 @@ public class ResumeSectionBuilder {
                 }
             }
 
-            String descLower = project.getDescription() != null ? project.getDescription().toLowerCase(Locale.ROOT) : "";
-            String nameLower = project.getName() != null ? project.getName().toLowerCase(Locale.ROOT) : "";
-
             Set<String> matchedProjKeywords = new LinkedHashSet<>();
 
             for (String kw : allMatched) {
-                String kwLower = kw.toLowerCase(Locale.ROOT);
-                if (projTechNorm.contains(kw) || descLower.contains(kwLower) || nameLower.contains(kwLower)) {
+                boolean isMatch = projTechNorm.contains(kw) ||
+                        SkillNormalizationUtil.containsKeyword(project.getDescription(), kw) ||
+                        SkillNormalizationUtil.containsKeyword(project.getName(), kw);
+
+                if (isMatch) {
                     matchedProjKeywords.add(kw);
                     if (reqSkills.contains(kw)) {
                         matchedReqCount++;

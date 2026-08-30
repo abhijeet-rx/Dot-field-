@@ -2,7 +2,6 @@ package com.dotfield.tailoring;
 
 import com.dotfield.entity.Experience;
 import com.dotfield.entity.Profile;
-import com.dotfield.entity.Project;
 import com.dotfield.entity.Skill;
 import com.dotfield.matching.JobRequirements;
 import org.junit.jupiter.api.BeforeEach;
@@ -48,23 +47,47 @@ class ResumeKeywordSelectorTest {
     @Test
     void selectKeywords_strictTechnologyMatching_javaNotJavaScript() {
         Profile profile = Profile.builder()
-                .skills(List.of(
-                        Skill.builder().name("Java").build()
+                .experience(List.of(
+                        Experience.builder()
+                                .role("Developer")
+                                .description("Worked extensively with JavaScript.")
+                                .build()
                 ))
                 .build();
 
         JobRequirements reqs = JobRequirements.builder()
-                .requiredSkills(Set.of("javascript"))
+                .requiredSkills(Set.of("java"))
                 .build();
 
         ResumeKeywordSelector.KeywordResult result = selector.selectKeywords(profile, reqs);
 
-        assertFalse(result.matchedKeywords().contains("javascript"));
-        assertTrue(result.unusedJobKeywords().contains("javascript"));
+        assertFalse(result.matchedKeywords().contains("java"));
+        assertTrue(result.unusedJobKeywords().contains("java"));
     }
 
     @Test
-    void selectKeywords_matchesExperienceText() {
+    void selectKeywords_strictTechnologyMatching_reactNotReactNative() {
+        Profile profile = Profile.builder()
+                .experience(List.of(
+                        Experience.builder()
+                                .role("React Native Developer")
+                                .description("Built cross-platform mobile apps using React Native.")
+                                .build()
+                ))
+                .build();
+
+        JobRequirements reqs = JobRequirements.builder()
+                .requiredSkills(Set.of("react"))
+                .build();
+
+        ResumeKeywordSelector.KeywordResult result = selector.selectKeywords(profile, reqs);
+
+        assertFalse(result.matchedKeywords().contains("react"));
+        assertTrue(result.unusedJobKeywords().contains("react"));
+    }
+
+    @Test
+    void selectKeywords_matchesExperienceTextSafely() {
         Profile profile = Profile.builder()
                 .experience(List.of(
                         Experience.builder()

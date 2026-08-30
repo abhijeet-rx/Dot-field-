@@ -1,9 +1,9 @@
 package com.dotfield.controller;
 
 import com.dotfield.dto.CreateJobRequest;
+import com.dotfield.dto.ExperienceRequest;
 import com.dotfield.dto.SkillRequest;
 import com.dotfield.dto.UpdateProfileRequest;
-import com.dotfield.entity.Job;
 import com.dotfield.entity.SkillCategory;
 import com.dotfield.repository.JobRepository;
 import com.dotfield.repository.ProfileRepository;
@@ -63,6 +63,16 @@ class ResumeTailoringControllerTest {
         mockMvc.perform(post("/profile/skills")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(skill)));
+
+        ExperienceRequest exp = ExperienceRequest.builder()
+                .company("Acme Inc")
+                .role("Software Engineer")
+                .description("Developed Java applications.")
+                .build();
+
+        mockMvc.perform(post("/profile/experience")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(exp)));
     }
 
     @Test

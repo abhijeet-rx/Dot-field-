@@ -14,15 +14,17 @@ public class ResumeSummaryGenerator {
 
     public String generateSummary(Profile profile, List<String> primarySkills) {
         if (profile == null) {
-            return "Software developer.";
+            return null;
         }
 
         Experience latestExp = getLatestExperience(profile.getExperience());
         Education topEdu = getTopEducation(profile.getEducation());
 
-        String role = latestExp != null && latestExp.getRole() != null && !latestExp.getRole().isBlank()
-                ? latestExp.getRole().trim()
-                : "Software developer";
+        if (latestExp == null || latestExp.getRole() == null || latestExp.getRole().isBlank()) {
+            return null;
+        }
+
+        String role = latestExp.getRole().trim();
 
         StringBuilder summaryBuilder = new StringBuilder();
         summaryBuilder.append(role);
@@ -34,7 +36,7 @@ public class ResumeSummaryGenerator {
 
         summaryBuilder.append(".");
 
-        if (latestExp != null && latestExp.getCompany() != null && !latestExp.getCompany().isBlank()) {
+        if (latestExp.getCompany() != null && !latestExp.getCompany().isBlank()) {
             summaryBuilder.append(" Previously worked at ").append(latestExp.getCompany().trim()).append(".");
         } else if (topEdu != null && topEdu.getFieldOfStudy() != null && !topEdu.getFieldOfStudy().isBlank()) {
             summaryBuilder.append(" Education in ").append(topEdu.getFieldOfStudy().trim()).append(".");

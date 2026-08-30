@@ -72,9 +72,8 @@ public class ResumeExperiencePrioritizer {
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i];
             int matchCount = 0;
-            String lineLower = line.toLowerCase(Locale.ROOT);
             for (String kw : matchedKeywords) {
-                if (lineLower.contains(kw.toLowerCase(Locale.ROOT))) {
+                if (SkillNormalizationUtil.containsKeyword(line, kw)) {
                     matchCount++;
                 }
             }
@@ -98,13 +97,10 @@ public class ResumeExperiencePrioritizer {
             return Collections.emptySet();
         }
 
-        String roleLower = exp.getRole() != null ? exp.getRole().toLowerCase(Locale.ROOT) : "";
-        String descLower = exp.getDescription() != null ? exp.getDescription().toLowerCase(Locale.ROOT) : "";
-
         Set<String> found = new LinkedHashSet<>();
         for (String kw : matchedKeywords) {
-            String kwLower = kw.toLowerCase(Locale.ROOT);
-            if (roleLower.contains(kwLower) || descLower.contains(kwLower)) {
+            if (SkillNormalizationUtil.containsKeyword(exp.getRole(), kw) ||
+                SkillNormalizationUtil.containsKeyword(exp.getDescription(), kw)) {
                 found.add(kw);
             }
         }

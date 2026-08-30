@@ -1,6 +1,8 @@
 package com.dotfield.matching;
 
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public class SkillNormalizationUtil {
@@ -43,6 +45,49 @@ public class SkillNormalizationUtil {
                 .map(SkillNormalizationUtil::normalize)
                 .filter(Objects::nonNull)
                 .collect(Collectors.toUnmodifiableSet());
+    }
+
+    /**
+     * Safely checks if free text contains a specific keyword using word boundaries
+     * and collision guards (e.g. Java != JavaScript, React != React Native, C != C++).
+     */
+    public static boolean containsKeyword(String text, String keyword) {
+        if (text == null || text.isBlank() || keyword == null || keyword.isBlank()) {
+            return false;
+        }
+
+        String normKeyword = normalize(keyword);
+        if (normKeyword == null || normKeyword.isBlank()) {
+            return false;
+        }
+
+        String patternStr = "(?<=^|[^a-zA-Z0-9#+.-])" + Pattern.quote(normKeyword) + "(?=$|[^a-zA-Z0-9#+.-])";
+        Pattern pattern = Pattern.compile(patternStr, Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(text);
+
+        while (matcher.find()) {
+            int end = matcher.end();
+
+            // Collision guard: 'react' vs 'react native'
+            if (normKeyword.equalsIgnoreCase("react")) {
+                String remainder = text.substring(end).toLowerCase(Locale.ROOT);
+                if (remainder.startsWith(" native") || remainder.startsWith("-native")) {
+                    continue;
+                }
+            }
+
+            // Collision guard: 'c' vs 'c++' or 'c#'
+            if (normKeyword.equalsIgnoreCase("c")) {
+                String remainder = text.substring(end).toLowerCase(Locale.ROOT);
+                if (remainder.startsWith("++") || remainder.startsWith("#")) {
+                    continue;
+                }
+            }
+
+            return true;
+        }
+
+        return false;
     }
 
 }
