@@ -7,7 +7,7 @@ import com.dotfield.exception.ResourceNotFoundException;
 import com.dotfield.matching.JobRequirementExtractor;
 import com.dotfield.matching.JobRequirements;
 import com.dotfield.repository.JobRepository;
-import com.dotfield.repository.ProfileRepository;
+import com.dotfield.security.CurrentUserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -18,15 +18,14 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class ResumeTailoringService {
 
-    private final ProfileRepository profileRepository;
+    private final CurrentUserService currentUserService;
     private final JobRepository jobRepository;
     private final JobRequirementExtractor requirementExtractor;
     private final ResumeTailoringEngine tailoringEngine;
 
     @Transactional(readOnly = true)
     public TailoredResumeResponse tailorResume(Long jobId) {
-        Profile profile = profileRepository.findFirstByOrderByIdAsc()
-                .orElseThrow(() -> new ResourceNotFoundException("Candidate profile not found"));
+        Profile profile = currentUserService.getCurrentUserProfile();
 
         Job job = jobRepository.findById(jobId)
                 .orElseThrow(() -> new ResourceNotFoundException("Job not found with id: " + jobId));

@@ -1,41 +1,14 @@
-import { useState } from 'react';
+import React from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
 import DotField from './components/DotField';
 import Navbar from './components/Navbar';
 import Dashboard from './pages/Dashboard';
 import JobIntelligence from './pages/JobIntelligence';
+import Login from './pages/Login';
+import Register from './pages/Register';
 import './index.css';
-
-const THEMES = [
-  {
-    name: 'Purple Nebula',
-    gradientFrom: 'rgba(168, 85, 247, 0.45)',
-    gradientTo: 'rgba(236, 72, 153, 0.35)',
-    glowColor: 'rgba(168, 85, 247, 0.25)',
-    chipColor: '#a855f7'
-  },
-  {
-    name: 'Cyber Cyan',
-    gradientFrom: 'rgba(0, 242, 254, 0.45)',
-    gradientTo: 'rgba(79, 172, 254, 0.35)',
-    glowColor: 'rgba(0, 242, 254, 0.25)',
-    chipColor: '#00f2fe'
-  },
-  {
-    name: 'Emerald Matrix',
-    gradientFrom: 'rgba(16, 185, 129, 0.45)',
-    gradientTo: 'rgba(52, 211, 153, 0.35)',
-    glowColor: 'rgba(16, 185, 129, 0.25)',
-    chipColor: '#10b981'
-  },
-  {
-    name: 'Neon Sunset',
-    gradientFrom: 'rgba(244, 63, 94, 0.45)',
-    gradientTo: 'rgba(251, 146, 60, 0.35)',
-    glowColor: 'rgba(244, 63, 94, 0.25)',
-    chipColor: '#f43f5e'
-  }
-];
 
 /* ─── Landing Page ────────────────────────────────────────── */
 function LandingPage() {
@@ -107,19 +80,37 @@ function LandingPage() {
 /* ─── App Root ────────────────────────────────────────────── */
 export default function App() {
   return (
-    <div className="app-viewport">
-      {/* Background Noise Texture */}
-      <div className="noise-overlay" />
+    <AuthProvider>
+      <div className="app-viewport">
+        {/* Background Noise Texture */}
+        <div className="noise-overlay" />
 
-      {/* Shared Navbar */}
-      <Navbar />
+        {/* Shared Navbar */}
+        <Navbar />
 
-      {/* Routes */}
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/dashboard/:id" element={<JobIntelligence />} />
-      </Routes>
-    </div>
+        {/* Routes */}
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/dashboard/:id"
+            element={
+              <ProtectedRoute>
+                <JobIntelligence />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </div>
+    </AuthProvider>
   );
 }

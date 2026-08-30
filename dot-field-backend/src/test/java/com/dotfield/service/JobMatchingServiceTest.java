@@ -7,7 +7,7 @@ import com.dotfield.entity.RemoteType;
 import com.dotfield.exception.ResourceNotFoundException;
 import com.dotfield.matching.*;
 import com.dotfield.repository.JobRepository;
-import com.dotfield.repository.ProfileRepository;
+import com.dotfield.security.CurrentUserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -16,7 +16,6 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
@@ -28,7 +27,7 @@ import static org.mockito.Mockito.when;
 class JobMatchingServiceTest {
 
     @Mock
-    private ProfileRepository profileRepository;
+    private CurrentUserService currentUserService;
 
     @Mock
     private JobRepository jobRepository;
@@ -80,7 +79,7 @@ class JobMatchingServiceTest {
 
     @Test
     void analyzeJob_success() {
-        when(profileRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(sampleProfile));
+        when(currentUserService.getCurrentUserProfile()).thenReturn(sampleProfile);
         when(jobRepository.findById(100L)).thenReturn(Optional.of(sampleJob));
 
         JobRequirements reqs = JobRequirements.builder()
@@ -103,7 +102,7 @@ class JobMatchingServiceTest {
 
     @Test
     void analyzeJob_profileNotFound_throwsResourceNotFoundException() {
-        when(profileRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.empty());
+        when(currentUserService.getCurrentUserProfile()).thenThrow(new ResourceNotFoundException("Candidate profile not found"));
 
         ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,
                 () -> jobMatchingService.analyzeJob(100L));
@@ -113,7 +112,7 @@ class JobMatchingServiceTest {
 
     @Test
     void analyzeJob_jobNotFound_throwsResourceNotFoundException() {
-        when(profileRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(sampleProfile));
+        when(currentUserService.getCurrentUserProfile()).thenReturn(sampleProfile);
         when(jobRepository.findById(999L)).thenReturn(Optional.empty());
 
         ResourceNotFoundException ex = assertThrows(ResourceNotFoundException.class,

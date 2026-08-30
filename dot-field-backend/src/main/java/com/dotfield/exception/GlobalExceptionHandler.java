@@ -24,6 +24,38 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     /**
+     * Handle unauthorized exceptions → 401.
+     */
+    @ExceptionHandler(UnauthorizedException.class)
+    public ResponseEntity<ApiError> handleUnauthorized(UnauthorizedException ex) {
+        log.warn("Unauthorized access attempt: {}", ex.getMessage());
+
+        ApiError error = ApiError.builder()
+                .status(HttpStatus.UNAUTHORIZED.value())
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(error);
+    }
+
+    /**
+     * Handle forbidden / access denied exceptions → 403.
+     */
+    @ExceptionHandler({ForbiddenException.class, org.springframework.security.access.AccessDeniedException.class})
+    public ResponseEntity<ApiError> handleForbidden(Exception ex) {
+        log.warn("Access denied: {}", ex.getMessage());
+
+        ApiError error = ApiError.builder()
+                .status(HttpStatus.FORBIDDEN.value())
+                .message("Access denied")
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(error);
+    }
+
+    /**
      * Handle resource-not-found exceptions → 404.
      */
     @ExceptionHandler(ResourceNotFoundException.class)

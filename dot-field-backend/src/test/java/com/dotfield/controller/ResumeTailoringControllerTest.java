@@ -4,9 +4,14 @@ import com.dotfield.dto.CreateJobRequest;
 import com.dotfield.dto.ExperienceRequest;
 import com.dotfield.dto.SkillRequest;
 import com.dotfield.dto.UpdateProfileRequest;
+import com.dotfield.entity.Profile;
+import com.dotfield.entity.Role;
 import com.dotfield.entity.SkillCategory;
+import com.dotfield.entity.User;
 import com.dotfield.repository.JobRepository;
 import com.dotfield.repository.ProfileRepository;
+import com.dotfield.repository.UserRepository;
+import com.dotfield.security.JwtService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,6 +20,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 import static org.hamcrest.Matchers.notNullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -25,6 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Transactional
 class ResumeTailoringControllerTest {
 
     @Autowired
@@ -39,21 +46,38 @@ class ResumeTailoringControllerTest {
     @Autowired
     private ProfileRepository profileRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private JwtService jwtService;
+
+    private User testUser;
+    private Profile testProfile;
+    private String authToken;
+
     @BeforeEach
     void setUp() throws Exception {
         jobRepository.deleteAll();
         profileRepository.deleteAll();
+        userRepository.deleteAll();
 
-        // Setup candidate profile
-        UpdateProfileRequest profileRequest = UpdateProfileRequest.builder()
+        testUser = User.builder()
+                .email("alex@example.com")
+                .passwordHash("hash")
+                .role(Role.ADMIN) // Admin so POST /jobs works
+                .build();
+        testUser = userRepository.save(testUser);
+
+        testProfile = Profile.builder()
+                .user(testUser)
                 .name("Alex Smith")
                 .email("alex@example.com")
                 .linkedinUrl("https://linkedin.com/in/alexsmith")
                 .build();
+        testProfile = profileRepository.save(testProfile);
 
-        mockMvc.perform(put("/profile")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(profileRequest)));
+        authToken = jwtService.generateToken(testUser.getId(), testUser.getEmail(), testUser.getRole());
 
         SkillRequest skill = SkillRequest.builder()
                 .name("Java")
@@ -61,6 +85,7 @@ class ResumeTailoringControllerTest {
                 .build();
 
         mockMvc.perform(post("/profile/skills")
+                .header("Authorization", "Bearer " + authToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(skill)));
 
@@ -71,6 +96,7 @@ class ResumeTailoringControllerTest {
                 .build();
 
         mockMvc.perform(post("/profile/experience")
+                .header("Authorization", "Bearer " + authToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(exp)));
     }
@@ -84,6 +110,7 @@ class ResumeTailoringControllerTest {
                 .build();
 
         String jobResponseJson = mockMvc.perform(post("/jobs")
+                        .header("Authorization", "Bearer " + authToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createJobRequest)))
                 .andExpect(status().isCreated())
@@ -91,7 +118,8 @@ class ResumeTailoringControllerTest {
 
         Long jobId = objectMapper.readTree(jobResponseJson).get("data").get("id").asLong();
 
-        mockMvc.perform(get("/jobs/" + jobId + "/resume/tailor"))
+        mockMvc.perform(get("/jobs/" + jobId + "/resume/tailor")
+                        .header("Authorization", "Bearer " + authToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("Resume tailored successfully"))
                 .andExpect(jsonPath("$.data.jobId").value(jobId))
@@ -103,7 +131,8 @@ class ResumeTailoringControllerTest {
 
     @Test
     void tailorResume_jobNotFound_returnsNotFound() throws Exception {
-        mockMvc.perform(get("/jobs/999/resume/tailor"))
+        mockMvc.perform(get("/jobs/999/resume/tailor")
+                        .header("Authorization", "Bearer " + authToken))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
                 .andExpect(jsonPath("$.message").value("Job not found with id: 999"));

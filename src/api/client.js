@@ -1,17 +1,25 @@
-const API_BASE = 'http://localhost:8080/api';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api';
 
 /**
  * DOT Field API client.
- * Wraps native fetch, unwraps ApiResponse<T> envelope, handles errors.
+ * Wraps native fetch, unwraps ApiResponse<T> envelope, auto-injects Bearer auth header, and handles errors.
  */
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
+  const token = localStorage.getItem('dotfield_token');
+
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers,
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
   const res = await fetch(url, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
   });
 
   if (!res.ok) {
@@ -22,11 +30,37 @@ async function request(endpoint, options = {}) {
     } catch {
       // Response body was not JSON
     }
+
+    if (res.status === 401 && !endpoint.startsWith('/auth/login')) {
+      // Token expired or invalid
+      localStorage.removeItem('dotfield_token');
+      window.dispatchEvent(new Event('dotfield_auth_expired'));
+    }
+
     throw new Error(errorMessage);
   }
 
   const body = await res.json();
   return body.data;
+}
+
+/** Authentication API */
+export function registerApi({ email, password, name }) {
+  return request('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ email, password, name }),
+  });
+}
+
+export function loginApi({ email, password }) {
+  return request('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function fetchMeApi() {
+  return request('/auth/me');
 }
 
 /** GET /api/jobs with pagination and filters */

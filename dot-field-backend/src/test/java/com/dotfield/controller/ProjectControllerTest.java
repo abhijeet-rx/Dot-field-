@@ -1,8 +1,12 @@
 package com.dotfield.controller;
 
 import com.dotfield.dto.ProjectRequest;
-import com.dotfield.dto.UpdateProfileRequest;
+import com.dotfield.entity.Profile;
+import com.dotfield.entity.Role;
+import com.dotfield.entity.User;
 import com.dotfield.repository.ProfileRepository;
+import com.dotfield.repository.UserRepository;
+import com.dotfield.security.JwtService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,6 +15,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -21,6 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Transactional
 class ProjectControllerTest {
 
     @Autowired
@@ -32,18 +38,36 @@ class ProjectControllerTest {
     @Autowired
     private ProfileRepository profileRepository;
 
-    @BeforeEach
-    void setUp() throws Exception {
-        profileRepository.deleteAll();
+    @Autowired
+    private UserRepository userRepository;
 
-        UpdateProfileRequest profileRequest = UpdateProfileRequest.builder()
+    @Autowired
+    private JwtService jwtService;
+
+    private String authToken;
+    private User testUser;
+    private Profile testProfile;
+
+    @BeforeEach
+    void setUp() {
+        profileRepository.deleteAll();
+        userRepository.deleteAll();
+
+        testUser = User.builder()
+                .email("jane@example.com")
+                .passwordHash("hash")
+                .role(Role.USER)
+                .build();
+        testUser = userRepository.save(testUser);
+
+        testProfile = Profile.builder()
+                .user(testUser)
                 .name("Jane Doe")
                 .email("jane@example.com")
                 .build();
+        testProfile = profileRepository.save(testProfile);
 
-        mockMvc.perform(put("/profile")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(profileRequest)));
+        authToken = jwtService.generateToken(testUser.getId(), testUser.getEmail(), testUser.getRole());
     }
 
     @Test
@@ -57,6 +81,7 @@ class ProjectControllerTest {
                 .build();
 
         String response = mockMvc.perform(post("/profile/projects")
+                        .header("Authorization", "Bearer " + authToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(createReq)))
                 .andExpect(status().isCreated())
@@ -75,20 +100,24 @@ class ProjectControllerTest {
                 .build();
 
         mockMvc.perform(put("/profile/projects/" + projectId)
+                        .header("Authorization", "Bearer " + authToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(updateReq)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("DOT Field Platform"))
                 .andExpect(jsonPath("$.data.technologies", hasSize(4)));
 
-        mockMvc.perform(get("/profile/projects"))
+        mockMvc.perform(get("/profile/projects")
+                        .header("Authorization", "Bearer " + authToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(1)));
 
-        mockMvc.perform(delete("/profile/projects/" + projectId))
+        mockMvc.perform(delete("/profile/projects/" + projectId)
+                        .header("Authorization", "Bearer " + authToken))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/profile/projects"))
+        mockMvc.perform(get("/profile/projects")
+                        .header("Authorization", "Bearer " + authToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(0)));
     }
@@ -101,6 +130,7 @@ class ProjectControllerTest {
                 .build();
 
         mockMvc.perform(post("/profile/projects")
+                        .header("Authorization", "Bearer " + authToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(invalidReq)))
                 .andExpect(status().isBadRequest())
@@ -114,6 +144,7 @@ class ProjectControllerTest {
                 .build();
 
         mockMvc.perform(put("/profile/projects/999")
+                        .header("Authorization", "Bearer " + authToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(updateReq)))
                 .andExpect(status().isNotFound());

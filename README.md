@@ -1,16 +1,71 @@
-# React + Vite
+# DOT Field — Job Intelligence Platform
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+> DOT Field is an AI-powered job discovery, requirement analysis, fit matching, candidate data protection, and resume tailoring platform.
 
-Currently, two official plugins are available:
+## Overview
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+DOT Field helps candidates discover relevant job opportunities, analyze job requirements against their authentic candidate profile, score job fit, generate tailored resumes, and manage job opportunities — while preserving candidate privacy and manual application workflows.
 
-## React Compiler
+---
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Tech Stack
 
-## Expanding the Oxlint configuration
+- **Frontend**: React 19, Vite, React Router DOM, CSS3 (Glassmorphism & Micro-animations)
+- **Backend**: Java 21, Spring Boot 3.4.1 (Web, Data JPA, Security, Validation, Flyway)
+- **Security**: Spring Security 6, JJWT (0.12.6), BCrypt Password Hashing, Stateless Sessions
+- **Database**: PostgreSQL (Production/Dev), H2 (In-Memory Unit Testing)
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+---
+
+## Quick Start
+
+### 1. Prerequisites
+
+- Java 21 SDK
+- Node.js 18+ & npm
+- PostgreSQL 14+ (or run locally using in-memory H2 fallback mode)
+
+### 2. Backend Setup
+
+```bash
+cd dot-field-backend
+
+# Copy environment template
+cp .env.example .env
+
+# Run tests
+.\mvnw.cmd clean test
+
+# Run application
+.\mvnw.cmd spring-boot:run
+```
+
+The backend server starts on `http://localhost:8080/api`.
+
+### 3. Frontend Setup
+
+```bash
+# In root directory
+npm install
+
+# Run dev server
+npm run dev
+# → http://localhost:5173
+```
+
+---
+
+## Authentication & Security
+
+- **Stateless JWT Security**: Requests to protected routes require `Authorization: Bearer <token>`.
+- **Environment-Only Secrets**: `jwt.secret` is loaded from environment variables (`JWT_SECRET`).
+- **Data Isolation**: Candidate profiles, skills, experience, education, projects, matching analyses, and tailored resumes are isolated per authenticated user.
+- **Role-Based Access Control (RBAC)**:
+  - `USER`: Browse jobs, calculate match scores, tailor resumes, manage personal profile.
+  - `ADMIN`: Job ingestion, manual creation, status modification, and automated discovery triggers (`POST /api/jobs`, `POST /api/jobs/discover`, `POST /api/jobs/extract`).
+
+---
+
+## License
+
+Private repository. All rights reserved.

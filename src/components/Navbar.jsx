@@ -1,8 +1,13 @@
+import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 
 export default function Navbar() {
   const location = useLocation();
+  const { isAuthenticated, user, logout } = useAuth();
   const isDashboard = location.pathname.startsWith('/dashboard');
+  const isLogin = location.pathname === '/login';
+  const isRegister = location.pathname === '/register';
 
   return (
     <header className="navbar">
@@ -13,16 +18,20 @@ export default function Navbar() {
       <nav className="nav-links">
         <Link
           to="/"
-          className={`nav-link ${!isDashboard ? 'nav-link--active' : ''}`}
+          className={`nav-link ${location.pathname === '/' ? 'nav-link--active' : ''}`}
         >
           Home
         </Link>
-        <Link
-          to="/dashboard"
-          className={`nav-link ${isDashboard ? 'nav-link--active' : ''}`}
-        >
-          Dashboard
-        </Link>
+        
+        {isAuthenticated && (
+          <Link
+            to="/dashboard"
+            className={`nav-link ${isDashboard ? 'nav-link--active' : ''}`}
+          >
+            Dashboard
+          </Link>
+        )}
+
         <a
           href="https://github.com/abhijeet-rx/Dot-field-"
           target="_blank"
@@ -34,6 +43,54 @@ export default function Navbar() {
           </svg>
           <span>GitHub</span>
         </a>
+
+        {isAuthenticated ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginLeft: '0.5rem' }}>
+            <span style={{ fontSize: '0.85rem', color: '#94a3b8', background: 'rgba(30, 41, 59, 0.8)', padding: '0.35rem 0.75rem', borderRadius: '20px', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+              {user?.email} {user?.role === 'ADMIN' && <strong style={{ color: '#818cf8', marginLeft: '4px' }}>(Admin)</strong>}
+            </span>
+            <button
+              onClick={logout}
+              style={{
+                background: 'transparent',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                color: '#f8fafc',
+                padding: '0.4rem 0.85rem',
+                borderRadius: '6px',
+                fontSize: '0.85rem',
+                fontWeight: '500',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              Sign Out
+            </button>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: '0.5rem' }}>
+            <Link
+              to="/login"
+              className={`nav-link ${isLogin ? 'nav-link--active' : ''}`}
+            >
+              Sign In
+            </Link>
+            <Link
+              to="/register"
+              style={{
+                background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                color: '#ffffff',
+                padding: '0.45rem 1rem',
+                borderRadius: '6px',
+                fontSize: '0.875rem',
+                fontWeight: '600',
+                textDecoration: 'none',
+                boxShadow: '0 2px 8px rgba(99, 102, 241, 0.3)'
+              }}
+            >
+              Register
+            </Link>
+          </div>
+        )}
       </nav>
     </header>
   );

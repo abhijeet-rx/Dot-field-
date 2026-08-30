@@ -1,9 +1,13 @@
 package com.dotfield.controller;
 
 import com.dotfield.dto.SkillRequest;
-import com.dotfield.dto.UpdateProfileRequest;
+import com.dotfield.entity.Profile;
+import com.dotfield.entity.Role;
 import com.dotfield.entity.SkillCategory;
+import com.dotfield.entity.User;
 import com.dotfield.repository.ProfileRepository;
+import com.dotfield.repository.UserRepository;
+import com.dotfield.security.JwtService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -12,6 +16,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -20,6 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Transactional
 class SkillControllerTest {
 
     @Autowired
@@ -31,18 +37,36 @@ class SkillControllerTest {
     @Autowired
     private ProfileRepository profileRepository;
 
-    @BeforeEach
-    void setUp() throws Exception {
-        profileRepository.deleteAll();
+    @Autowired
+    private UserRepository userRepository;
 
-        UpdateProfileRequest profileRequest = UpdateProfileRequest.builder()
+    @Autowired
+    private JwtService jwtService;
+
+    private String authToken;
+    private User testUser;
+    private Profile testProfile;
+
+    @BeforeEach
+    void setUp() {
+        profileRepository.deleteAll();
+        userRepository.deleteAll();
+
+        testUser = User.builder()
+                .email("jane@example.com")
+                .passwordHash("hash")
+                .role(Role.USER)
+                .build();
+        testUser = userRepository.save(testUser);
+
+        testProfile = Profile.builder()
+                .user(testUser)
                 .name("Jane Doe")
                 .email("jane@example.com")
                 .build();
+        testProfile = profileRepository.save(testProfile);
 
-        mockMvc.perform(put("/profile")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(profileRequest)));
+        authToken = jwtService.generateToken(testUser.getId(), testUser.getEmail(), testUser.getRole());
     }
 
     @Test
@@ -53,13 +77,15 @@ class SkillControllerTest {
                 .build();
 
         mockMvc.perform(post("/profile/skills")
+                        .header("Authorization", "Bearer " + authToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(javaSkill)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.name").value("Java"))
                 .andExpect(jsonPath("$.data.category").value("LANGUAGE"));
 
-        mockMvc.perform(get("/profile/skills"))
+        mockMvc.perform(get("/profile/skills")
+                        .header("Authorization", "Bearer " + authToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(1)))
                 .andExpect(jsonPath("$.data[0].name").value("Java"));
@@ -73,6 +99,7 @@ class SkillControllerTest {
                 .build();
 
         mockMvc.perform(post("/profile/skills")
+                        .header("Authorization", "Bearer " + authToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(javaSkill)))
                 .andExpect(status().isCreated());
@@ -83,6 +110,7 @@ class SkillControllerTest {
                 .build();
 
         mockMvc.perform(post("/profile/skills")
+                        .header("Authorization", "Bearer " + authToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(duplicateJava)))
                 .andExpect(status().isBadRequest())
@@ -97,6 +125,7 @@ class SkillControllerTest {
                 .build();
 
         mockMvc.perform(post("/profile/skills")
+                        .header("Authorization", "Bearer " + authToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(invalidSkill)))
                 .andExpect(status().isBadRequest())
@@ -111,6 +140,7 @@ class SkillControllerTest {
                 .build();
 
         String response = mockMvc.perform(post("/profile/skills")
+                        .header("Authorization", "Bearer " + authToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(skill)))
                 .andExpect(status().isCreated())
@@ -118,18 +148,21 @@ class SkillControllerTest {
 
         Long skillId = objectMapper.readTree(response).get("data").get("id").asLong();
 
-        mockMvc.perform(delete("/profile/skills/" + skillId))
+        mockMvc.perform(delete("/profile/skills/" + skillId)
+                        .header("Authorization", "Bearer " + authToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("Skill deleted successfully"));
 
-        mockMvc.perform(get("/profile/skills"))
+        mockMvc.perform(get("/profile/skills")
+                        .header("Authorization", "Bearer " + authToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data", hasSize(0)));
     }
 
     @Test
     void deleteSkill_nonExistent_returnsNotFound() throws Exception {
-        mockMvc.perform(delete("/profile/skills/999"))
+        mockMvc.perform(delete("/profile/skills/999")
+                        .header("Authorization", "Bearer " + authToken))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404));
     }

@@ -1,12 +1,10 @@
 package com.dotfield.controller;
 
-import com.dotfield.entity.Job;
-import com.dotfield.entity.JobStatus;
-import com.dotfield.entity.Profile;
-
-import com.dotfield.entity.RemoteType;
+import com.dotfield.entity.*;
 import com.dotfield.repository.JobRepository;
 import com.dotfield.repository.ProfileRepository;
+import com.dotfield.repository.UserRepository;
+import com.dotfield.security.JwtService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,6 +12,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.notNullValue;
@@ -23,6 +22,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Transactional
 class JobMatchingControllerTest {
 
     @Autowired
@@ -34,15 +34,34 @@ class JobMatchingControllerTest {
     @Autowired
     private ProfileRepository profileRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private JwtService jwtService;
+
+    private User testUser;
+    private String authToken;
+
     @BeforeEach
     void setUp() {
         jobRepository.deleteAll();
         profileRepository.deleteAll();
+        userRepository.deleteAll();
+
+        testUser = User.builder()
+                .email("alex@example.com")
+                .passwordHash("hash")
+                .role(Role.USER)
+                .build();
+        testUser = userRepository.save(testUser);
+        authToken = jwtService.generateToken(testUser.getId(), testUser.getEmail(), testUser.getRole());
     }
 
     @Test
     void getJobMatch_success() throws Exception {
         Profile profile = Profile.builder()
+                .user(testUser)
                 .name("Alex Developer")
                 .email("alex@example.com")
                 .location("Bangalore, India")
@@ -61,6 +80,7 @@ class JobMatchingControllerTest {
         Job savedJob = jobRepository.save(job);
 
         mockMvc.perform(get("/jobs/{id}/match", savedJob.getId())
+                        .header("Authorization", "Bearer " + authToken)
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.jobId").value(savedJob.getId()))
@@ -74,12 +94,14 @@ class JobMatchingControllerTest {
     @Test
     void getJobMatch_jobNotFound_returns404() throws Exception {
         Profile profile = Profile.builder()
+                .user(testUser)
                 .name("Alex Developer")
                 .email("alex@example.com")
                 .build();
         profileRepository.save(profile);
 
         mockMvc.perform(get("/jobs/{id}/match", 999L)
+                        .header("Authorization", "Bearer " + authToken)
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
@@ -96,9 +118,10 @@ class JobMatchingControllerTest {
         Job savedJob = jobRepository.save(job);
 
         mockMvc.perform(get("/jobs/{id}/match", savedJob.getId())
+                        .header("Authorization", "Bearer " + authToken)
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.message").value("Candidate profile not found"));
+                .andExpect(jsonPath("$.message").value("Candidate profile not found for current user"));
     }
 }

@@ -376,67 +376,38 @@ Background scheduling infrastructure exists (`JobDiscoveryScheduler`) but is **i
 
 ---
 
+## API Documentation — Phase 9 Authentication & Security
+
+### Base Path: `/api`
+
+### Authentication Endpoints
+
+| Method | Endpoint | Access | Description |
+|--------|----------|--------|-------------|
+| `POST` | `/api/auth/register` | Public | Register a new user (`email`, `password`, optional `name`) |
+| `POST` | `/api/auth/login` | Public | Authenticate user credentials and return JWT token |
+| `GET`  | `/api/auth/me` | Authenticated | Retrieve currently authenticated user and candidate profile details |
+
+---
+
 ## Current Phase
 
 ```
-Phase 8 — Job Intelligence Dashboard
+Phase 9 — Production Authentication & Authorization
 Status: Complete
 ```
 
-### What's included in Phase 8
+### What's included in Phase 9
 
-- ✅ **Job Intelligence Dashboard** — user-facing React frontend for browsing and analyzing job opportunities
-- ✅ **Job List View** — paginated grid of discovered jobs with glassmorphism cards
-- ✅ **Filtering** — company, status, remote type, employment type, source filters with collapsible panel
-- ✅ **Job Intelligence Page** — single-job detail view with complete analysis
-- ✅ **Match Score Display** — SVG circular progress ring, color-coded by match category, with skill/experience/education/location dimension bars
-- ✅ **Skills & Requirements** — matched required/preferred skills, missing required/preferred skills (using Phase 5 backend matching)
-- ✅ **Strengths & Gaps** — backend-provided explainability (no frontend-side matching logic)
-- ✅ **Detailed Analysis** — experience, education, and location analysis text from the matching engine
-- ✅ **Resume Tailoring** — on-demand tailored resume generation via Phase 6 backend with anti-fabrication guarantee
-- ✅ **Tailoring Analysis** — matched keywords, unused job keywords, emphasized entries, tailoring notes
-- ✅ **Manual-Only Application** — "Apply Manually ↗" opens original job URL in new tab; **no auto-apply, no form submission, no credential collection**
-- ✅ **Loading States** — skeleton cards on job list, spinner on intelligence page, inline loading for match and resume
-- ✅ **Empty States** — "No jobs found" with filter-aware messaging
-- ✅ **Error States** — user-facing error messages without stack traces
-- ✅ **Performance** — match scores loaded on-demand per job (no N+1 batch requests on job list)
-- ✅ **Landing Page Preserved** — existing DotField particle animation landing page at `/` with updated hero text
-- ✅ **Smooth Visual Flow** — dashboard shares the same dark glassmorphism aesthetic, fonts, color palette, and animations as the landing page
-- ✅ **CORS Configuration** — `CorsConfig.java` allows Vite dev server (`localhost:5173`) to call backend API
-- ✅ **Backend Tests** — CORS configuration integration tests (207 total tests, 0 failures)
-- ✅ **Frontend Build** — Vite production build passes with 0 errors
-
-### What Phase 8 does NOT include
-
-- ❌ No automatic job applications
-- ❌ No bulk application submission
-- ❌ No CAPTCHA bypass or bot detection bypass
-- ❌ No credential harvesting
-- ❌ No automated application form submission
-- ❌ No WhatsApp or email notifications
-- ❌ No automated recruiter communication
-- ❌ No application tracking (future phase)
-
-### Frontend Development
-
-```bash
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-# → http://localhost:5173
-
-# Build for production
-npm run build
-```
-
-Routes:
-- `/` — Landing page (DotField particle animation + product hero)
-- `/dashboard` — Job list (browse, filter, sort)
-- `/dashboard/:id` — Job intelligence page (details + match + tailor + apply)
-
-The frontend connects to the backend at `http://localhost:8080/api` via CORS.
+- ✅ **Spring Security 6 Integration**: Stateless JWT security architecture using HMAC-SHA256 (`jjwt 0.12.6`).
+- ✅ **Secure Password Storage**: BCrypt hashing with strength factor 10.
+- ✅ **Flyway Migration**: Data-safe migration (`V1__init_auth_schema.sql`) for existing PostgreSQL database without profile data loss.
+- ✅ **Zero First-User-Admin Vulnerability**: Registration ALWAYS defaults to `ROLE_USER`. Server-side initial admin assignment via `INITIAL_ADMIN_EMAIL` environment variable.
+- ✅ **Strict Environment-Only Secrets**: `jwt.secret=${JWT_SECRET}` in `application.properties` with no fallback string.
+- ✅ **Candidate Data Isolation**: All profile, skill, experience, education, project, matching, and tailoring operations use `CurrentUserService.getCurrentUserProfile()`.
+- ✅ **Global Jobs & RBAC**: `Job` listings remain shared global opportunities. Ingestion & mutation endpoints require `ADMIN` role. Read, match, and tailor endpoints require `USER` role.
+- ✅ **React Frontend Auth**: `AuthProvider`, `Login.jsx`, `Register.jsx`, `ProtectedRoute.jsx`, `VITE_API_BASE_URL` config, and automatic Bearer token injection.
+- ✅ **Automated Tests**: 228 tests passing (100% success rate), including security unit tests, RBAC tests, and cross-user data isolation tests.
 
 ---
 
@@ -452,6 +423,7 @@ The frontend connects to the backend at `http://localhost:8080/api` via CORS.
 | 6     | Resume Tailoring          | ✅ Complete  |
 | 7     | Job Discovery & Aggregation| ✅ Complete |
 | 8     | Job Intelligence Dashboard | ✅ Complete |
+| 9     | Production Authentication  | ✅ Complete |
 
 ---
 

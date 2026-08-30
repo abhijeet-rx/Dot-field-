@@ -3,9 +3,9 @@ package com.dotfield.service;
 import com.dotfield.dto.ProfileResponse;
 import com.dotfield.dto.UpdateProfileRequest;
 import com.dotfield.entity.Profile;
-import com.dotfield.exception.ResourceNotFoundException;
 import com.dotfield.mapper.ProfileMapper;
 import com.dotfield.repository.ProfileRepository;
+import com.dotfield.security.CurrentUserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -18,6 +18,7 @@ public class ProfileService {
 
     private final ProfileRepository profileRepository;
     private final ProfileMapper profileMapper;
+    private final CurrentUserService currentUserService;
 
     @Transactional(readOnly = true)
     public ProfileResponse getProfile() {
@@ -27,8 +28,7 @@ public class ProfileService {
 
     @Transactional
     public ProfileResponse updateProfile(UpdateProfileRequest request) {
-        Profile profile = profileRepository.findFirstByOrderByIdAsc()
-                .orElseGet(() -> Profile.builder().build());
+        Profile profile = getPrimaryProfileOrThrow();
 
         profile.setName(request.getName());
         profile.setEmail(request.getEmail());
@@ -46,8 +46,7 @@ public class ProfileService {
 
     @Transactional(readOnly = true)
     public Profile getPrimaryProfileOrThrow() {
-        return profileRepository.findFirstByOrderByIdAsc()
-                .orElseThrow(() -> new ResourceNotFoundException("Candidate profile not found"));
+        return currentUserService.getCurrentUserProfile();
     }
 
 }

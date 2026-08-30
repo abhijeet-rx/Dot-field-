@@ -1,7 +1,12 @@
 package com.dotfield.controller;
 
 import com.dotfield.dto.UpdateProfileRequest;
+import com.dotfield.entity.Profile;
+import com.dotfield.entity.Role;
+import com.dotfield.entity.User;
 import com.dotfield.repository.ProfileRepository;
+import com.dotfield.repository.UserRepository;
+import com.dotfield.security.JwtService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -10,6 +15,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.annotation.Transactional;
 
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.is;
@@ -20,6 +26,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@Transactional
 class ProfileControllerTest {
 
     @Autowired
@@ -31,21 +38,44 @@ class ProfileControllerTest {
     @Autowired
     private ProfileRepository profileRepository;
 
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private JwtService jwtService;
+
+    private String authToken;
+    private User testUser;
+
     @BeforeEach
     void setUp() {
         profileRepository.deleteAll();
+        userRepository.deleteAll();
+
+        testUser = User.builder()
+                .email("testuser@example.com")
+                .passwordHash("hash")
+                .role(Role.USER)
+                .build();
+        testUser = userRepository.save(testUser);
+        authToken = jwtService.generateToken(testUser.getId(), testUser.getEmail(), testUser.getRole());
     }
 
     @Test
     void getProfile_whenEmpty_returnsNotFound() throws Exception {
-        mockMvc.perform(get("/profile"))
+        mockMvc.perform(get("/profile")
+                        .header("Authorization", "Bearer " + authToken))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404))
-                .andExpect(jsonPath("$.message").value("Candidate profile not found"));
+                .andExpect(jsonPath("$.message").value("Candidate profile not found for current user"));
     }
 
     @Test
     void putProfile_createsOrUpdatesProfile() throws Exception {
+        // Create initial profile linked to user
+        Profile profile = Profile.builder().user(testUser).name("Initial").email(testUser.getEmail()).build();
+        profileRepository.save(profile);
+
         UpdateProfileRequest request = UpdateProfileRequest.builder()
                 .name("John Doe")
                 .email("john.doe@example.com")
@@ -57,6 +87,7 @@ class ProfileControllerTest {
                 .build();
 
         mockMvc.perform(put("/profile")
+                        .header("Authorization", "Bearer " + authToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -68,7 +99,8 @@ class ProfileControllerTest {
                 .andExpect(jsonPath("$.data.experience", is(empty())))
                 .andExpect(jsonPath("$.message").value("Profile updated successfully"));
 
-        mockMvc.perform(get("/profile"))
+        mockMvc.perform(get("/profile")
+                        .header("Authorization", "Bearer " + authToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.name").value("John Doe"))
                 .andExpect(jsonPath("$.data.email").value("john.doe@example.com"));
@@ -76,12 +108,16 @@ class ProfileControllerTest {
 
     @Test
     void putProfile_withMissingRequiredName_returnsBadRequest() throws Exception {
+        Profile profile = Profile.builder().user(testUser).name("Initial").email(testUser.getEmail()).build();
+        profileRepository.save(profile);
+
         UpdateProfileRequest request = UpdateProfileRequest.builder()
                 .name("")
                 .email("john@example.com")
                 .build();
 
         mockMvc.perform(put("/profile")
+                        .header("Authorization", "Bearer " + authToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())
@@ -91,12 +127,16 @@ class ProfileControllerTest {
 
     @Test
     void putProfile_withInvalidEmail_returnsBadRequest() throws Exception {
+        Profile profile = Profile.builder().user(testUser).name("Initial").email(testUser.getEmail()).build();
+        profileRepository.save(profile);
+
         UpdateProfileRequest request = UpdateProfileRequest.builder()
                 .name("John Doe")
                 .email("invalid-email")
                 .build();
 
         mockMvc.perform(put("/profile")
+                        .header("Authorization", "Bearer " + authToken)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())

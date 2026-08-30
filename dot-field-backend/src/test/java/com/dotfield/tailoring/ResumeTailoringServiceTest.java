@@ -7,7 +7,7 @@ import com.dotfield.exception.ResourceNotFoundException;
 import com.dotfield.matching.JobRequirementExtractor;
 import com.dotfield.matching.JobRequirements;
 import com.dotfield.repository.JobRepository;
-import com.dotfield.repository.ProfileRepository;
+import com.dotfield.security.CurrentUserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -17,14 +17,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class ResumeTailoringServiceTest {
 
     @Mock
-    private ProfileRepository profileRepository;
+    private CurrentUserService currentUserService;
 
     @Mock
     private JobRepository jobRepository;
@@ -39,7 +38,7 @@ class ResumeTailoringServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new ResumeTailoringService(profileRepository, jobRepository, requirementExtractor, tailoringEngine);
+        service = new ResumeTailoringService(currentUserService, jobRepository, requirementExtractor, tailoringEngine);
     }
 
     @Test
@@ -49,7 +48,7 @@ class ResumeTailoringServiceTest {
         JobRequirements reqs = JobRequirements.builder().build();
         TailoredResumeResponse mockResponse = TailoredResumeResponse.builder().jobId(10L).profileId(1L).build();
 
-        when(profileRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(profile));
+        when(currentUserService.getCurrentUserProfile()).thenReturn(profile);
         when(jobRepository.findById(10L)).thenReturn(Optional.of(job));
         when(requirementExtractor.extract(job)).thenReturn(reqs);
         when(tailoringEngine.tailor(profile, job, reqs)).thenReturn(mockResponse);
@@ -64,7 +63,7 @@ class ResumeTailoringServiceTest {
     @Test
     void tailorResume_jobNotFound_throwsResourceNotFoundException() {
         Profile profile = Profile.builder().id(1L).build();
-        when(profileRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(profile));
+        when(currentUserService.getCurrentUserProfile()).thenReturn(profile);
         when(jobRepository.findById(999L)).thenReturn(Optional.empty());
 
         assertThrows(ResourceNotFoundException.class, () -> service.tailorResume(999L));
@@ -72,7 +71,7 @@ class ResumeTailoringServiceTest {
 
     @Test
     void tailorResume_profileNotFound_throwsResourceNotFoundException() {
-        when(profileRepository.findFirstByOrderByIdAsc()).thenReturn(Optional.empty());
+        when(currentUserService.getCurrentUserProfile()).thenThrow(new ResourceNotFoundException("Candidate profile not found"));
 
         assertThrows(ResourceNotFoundException.class, () -> service.tailorResume(10L));
     }
