@@ -112,6 +112,29 @@ public class JobDeduplicationService {
         }
     }
 
+    /**
+     * Generates a deterministic SHA-256 fingerprint for deduplication.
+     * <p>
+     * The fingerprint is computed from: {@code SHA-256(norm(company) + "|" + norm(title)
+     * + "|" + norm(location) [+ "|" + norm(description)])}.
+     * <p>
+     * <strong>Null/blank behavior:</strong>
+     * <ul>
+     *   <li>If {@code company}, {@code title}, or {@code location} is null or blank
+     *       after normalization, returns {@code null} (no fingerprint generated).
+     *       This prevents overly aggressive deduplication when source data is insufficient.</li>
+     *   <li>If {@code description} is null or blank after normalization, the fingerprint
+     *       is still generated using only company + title + location.</li>
+     * </ul>
+     * <p>
+     * No fuzzy matching or AI similarity is used. The hash is purely deterministic.
+     *
+     * @param company     the company name (required — returns null if missing)
+     * @param title       the job title (required — returns null if missing)
+     * @param location    the job location (required — returns null if missing)
+     * @param description the job description (optional — included when present)
+     * @return the SHA-256 hex string, or {@code null} if minimum fields are absent
+     */
     public String generateFingerprint(String company, String title, String location, String description) {
         String normCompany = JobNormalizationUtil.normalizeText(company);
         String normTitle = JobNormalizationUtil.normalizeText(title);

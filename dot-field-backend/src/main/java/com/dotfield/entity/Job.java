@@ -8,11 +8,15 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "jobs", indexes = {
-        @Index(name = "idx_jobs_source_external_id", columnList = "source, externalId"),
-        @Index(name = "idx_jobs_canonical_url", columnList = "canonicalUrl"),
-        @Index(name = "idx_jobs_fingerprint", columnList = "deduplicationFingerprint")
-})
+@Table(name = "jobs",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_jobs_source_external_id", columnNames = {"source", "externalId"}),
+                @UniqueConstraint(name = "uk_jobs_canonical_url", columnNames = {"canonicalUrl"})
+        },
+        indexes = {
+                @Index(name = "idx_jobs_fingerprint", columnList = "deduplicationFingerprint")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor

@@ -11,8 +11,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-import static org.hamcrest.Matchers.greaterThanOrEqualTo;
-import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -51,7 +50,10 @@ class JobDiscoveryControllerTest {
                 .andExpect(jsonPath("$.message").value("Job discovery completed successfully"))
                 .andExpect(jsonPath("$.data.discovered", greaterThanOrEqualTo(1)))
                 .andExpect(jsonPath("$.data.newJobs", greaterThanOrEqualTo(1)))
-                .andExpect(jsonPath("$.data.sourceResults", notNullValue()));
+                .andExpect(jsonPath("$.data.duplicates").value(0))
+                .andExpect(jsonPath("$.data.failed").value(0))
+                .andExpect(jsonPath("$.data.sourceResults", notNullValue()))
+                .andExpect(jsonPath("$.data.sourceResults[0].source").value("COMPANY_WEBSITE"));
     }
 
     @Test
@@ -77,6 +79,41 @@ class JobDiscoveryControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void discoverJobs_maxResultsZero_returns400BadRequest() throws Exception {
+        // maxResults = 0 violates @Min(1)
+        String json = "{\"source\": \"COMPANY_WEBSITE\", \"maxResults\": 0}";
+
+        mockMvc.perform(post("/jobs/discover")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void discoverJobs_maxResultsNegative_returns400BadRequest() throws Exception {
+        String json = "{\"source\": \"COMPANY_WEBSITE\", \"maxResults\": -5}";
+
+        mockMvc.perform(post("/jobs/discover")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void discoverJobs_unsupportedSource_returns400WithMessage() throws Exception {
+        JobDiscoveryRequest request = JobDiscoveryRequest.builder()
+                .source("LINKEDIN")
+                .maxResults(10)
+                .build();
+
+        mockMvc.perform(post("/jobs/discover")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Unsupported job source")));
     }
 
 }

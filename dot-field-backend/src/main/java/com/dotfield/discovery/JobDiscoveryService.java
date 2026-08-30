@@ -13,22 +13,29 @@ import com.dotfield.extractor.JobExtractionPipeline;
 import com.dotfield.repository.JobRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.*;
 
+/**
+ * Orchestrates job discovery: resolves source adapters, invokes the shared
+ * extraction pipeline, deduplicates, and persists results.
+ * <p>
+ * This class is intentionally NOT {@code @Transactional} at the class level.
+ * Each listing is persisted in its own {@code REQUIRES_NEW} transaction via
+ * {@link JobDiscoveryPersistenceHelper}, so that a constraint violation on
+ * one listing does not roll back all others.
+ */
 @Slf4j
 @Service
-@Transactional
 @RequiredArgsConstructor
 public class JobDiscoveryService {
 
     private final JobSourceRegistry sourceRegistry;
     private final JobExtractionPipeline extractionPipeline;
     private final JobDeduplicationService deduplicationService;
+    private final JobDiscoveryPersistenceHelper persistenceHelper;
     private final JobRepository jobRepository;
 
     public JobDiscoveryResponse discoverJobs(JobDiscoveryRequest request) {
@@ -46,6 +53,7 @@ public class JobDiscoveryService {
         int newJobs = 0;
         int updatedJobs = 0;
         int unchangedJobs = 0;
+        int duplicates = 0;
         int failed = 0;
 
         List<RawJobListing> rawListings;
@@ -53,14 +61,39 @@ public class JobDiscoveryService {
             rawListings = source.discover(request);
         } catch (Exception e) {
             log.error("Failed to discover jobs from source: {}", source.getSourceName(), e);
-            failed = 1;
-            rawListings = List.of();
+            // Source-level failure: no listings were retrieved.
+            // Do NOT delete existing jobs or mark them expired.
+            return JobDiscoveryResponse.builder()
+                    .discovered(0)
+                    .newJobs(0)
+                    .updatedJobs(0)
+                    .unchangedJobs(0)
+                    .duplicates(0)
+                    .failed(1)
+                    .sourceResults(List.of(SourceDiscoveryResult.builder()
+                            .source(source.getSourceName())
+                            .discovered(0)
+                            .failed(1)
+                            .build()))
+                    .build();
         }
 
         totalDiscovered = rawListings.size();
 
+        // Track within-batch externalIds to detect batch-level duplicates
+        Set<String> seenExternalIds = new HashSet<>();
+
         for (RawJobListing rawListing : rawListings) {
             try {
+                // Detect within-batch duplicates by externalId
+                if (rawListing.getExternalId() != null && !rawListing.getExternalId().isBlank()) {
+                    if (!seenExternalIds.add(rawListing.getExternalId().trim())) {
+                        log.debug("Within-batch duplicate detected for externalId: {}", rawListing.getExternalId());
+                        duplicates++;
+                        continue;
+                    }
+                }
+
                 ProcessResult result = processListing(rawListing, source.getSourceName());
                 switch (result) {
                     case NEW -> newJobs++;
@@ -73,20 +106,18 @@ public class JobDiscoveryService {
             }
         }
 
-        int duplicates = totalDiscovered - (newJobs + updatedJobs + unchangedJobs);
-        if (duplicates < 0) duplicates = 0;
-
         SourceDiscoveryResult sourceResult = SourceDiscoveryResult.builder()
                 .source(source.getSourceName())
                 .discovered(totalDiscovered)
                 .newJobs(newJobs)
                 .updatedJobs(updatedJobs)
                 .unchangedJobs(unchangedJobs)
+                .duplicates(duplicates)
                 .failed(failed)
                 .build();
 
-        log.info("Job discovery completed for source: {} -> Discovered: {}, New: {}, Updated: {}, Unchanged: {}, Failed: {}",
-                source.getSourceName(), totalDiscovered, newJobs, updatedJobs, unchangedJobs, failed);
+        log.info("Job discovery completed for source: {} -> Discovered: {}, New: {}, Updated: {}, Unchanged: {}, Duplicates: {}, Failed: {}",
+                source.getSourceName(), totalDiscovered, newJobs, updatedJobs, unchangedJobs, duplicates, failed);
 
         return JobDiscoveryResponse.builder()
                 .discovered(totalDiscovered)
@@ -142,7 +173,7 @@ public class JobDiscoveryService {
 
             boolean changed = updateJobFieldsIfChanged(existingJob, extractedJob, rawListing.getExternalId(), canonicalUrl, fingerprint);
 
-            jobRepository.save(existingJob);
+            persistenceHelper.updateExistingJob(existingJob);
             return changed ? ProcessResult.UPDATED : ProcessResult.UNCHANGED;
         }
 
@@ -168,10 +199,14 @@ public class JobDiscoveryService {
                 .build();
 
         try {
-            jobRepository.save(newJob);
+            persistenceHelper.saveNewJob(newJob);
             return ProcessResult.NEW;
-        } catch (DataIntegrityViolationException e) {
-            log.warn("Concurrency collision detected for job URL/externalId during save. Falling back to re-fetch and update.", e);
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            // Concurrent duplicate: the REQUIRES_NEW transaction already rolled back.
+            // Re-fetch existing record in a clean context.
+            log.info("Concurrent duplicate detected. Re-fetching existing job for source={}, externalId={}, canonicalUrl={}",
+                    extractedJob.getSource(), rawListing.getExternalId(), canonicalUrl);
+
             Optional<Job> fallbackOpt = deduplicationService.findExistingJob(
                     extractedJob.getSource(),
                     rawListing.getExternalId(),
@@ -181,14 +216,20 @@ public class JobDiscoveryService {
                     extractedJob.getLocation(),
                     extractedJob.getDescription()
             );
+
             if (fallbackOpt.isPresent()) {
                 Job fallbackJob = fallbackOpt.get();
                 fallbackJob.setLastDiscoveredAt(now);
                 boolean changed = updateJobFieldsIfChanged(fallbackJob, extractedJob, rawListing.getExternalId(), canonicalUrl, fingerprint);
-                jobRepository.save(fallbackJob);
+                persistenceHelper.updateExistingJob(fallbackJob);
                 return changed ? ProcessResult.UPDATED : ProcessResult.UNCHANGED;
             }
-            throw e;
+
+            // Extremely unlikely: constraint violation but cannot re-fetch.
+            // Treat as unchanged to avoid data loss.
+            log.warn("Could not re-fetch job after constraint violation. source={}, externalId={}",
+                    extractedJob.getSource(), rawListing.getExternalId());
+            return ProcessResult.UNCHANGED;
         }
     }
 

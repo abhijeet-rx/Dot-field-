@@ -16,6 +16,7 @@ public class SourceDiscoveryResult {
     private int newJobs;
     private int updatedJobs;
     private int unchangedJobs;
+    private int duplicates;
     private int failed;
 
 }

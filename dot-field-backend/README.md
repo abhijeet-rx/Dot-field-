@@ -212,17 +212,98 @@ dot-field-backend/
 
 ### Discovery Architecture & Rules
 
-- **Pluggable Source Strategy (`JobSource` & `JobSourceRegistry`):** External sources are encapsulated in pluggable adapters (`JobSource`). `JobSourceRegistry` resolves supported adapters dynamically without discovery orchestrator code modifications.
-- **V1 Source Adapter (`CompanyCareerPageSource`):** Supports configured public feeds and company career listings (`COMPANY_WEBSITE`). Does **not** perform arbitrary user URL fetching, avoiding SSRF security vulnerabilities.
-- **Shared Extraction & Normalization Pipeline (`JobExtractionPipeline`):** Phase 7 discovery reuses the exact same extraction and normalization core (`JobNormalizationUtil`) as Phase 4 manual extraction without code duplication.
-- **3-Level Deterministic Deduplication (`JobDeduplicationService`):**
-  - **Level 1 — Source + External ID:** Identity key `(source, externalId)` for provider-assigned IDs.
-  - **Level 2 — Canonical URL:** Scheme/host lowercased, default ports removed, trailing slashes removed, tracking params (`utm_*`, `ref`, `fbclid`) stripped. Functional params (e.g. `location=bangalore`) are preserved. `http` and `https` remain distinct.
-  - **Level 3 — Composite SHA-256 Fingerprint:** Hashed from `company + title + location (+ description)`. Skipped if minimum company/title/location fields are absent.
-- **Concurrency & Race Condition Protection:** PostgreSQL unique indexes on `(source, externalId)` and `canonicalUrl`. `DataIntegrityViolationException` is caught during concurrent saves and handled by re-fetching and updating existing records.
-- **User Application State Preservation:** When an external listing refresh occurs, externally sourced listing fields (`description`, `salaryMin`, `salaryMax`, `jobUrl`, `lastDiscoveredAt`, etc.) are updated, but **`job.getStatus()` is strictly PRESERVED** across all candidate tracking states (`SAVED`, `APPLIED`, `INTERVIEW`, `OFFER`, `REJECTED`, `ARCHIVED`).
-- **Idempotency & Fail-Safety:** Repeated discovery runs yield 0 new jobs, N unchanged. Source failures do not delete or expire existing jobs.
-- **Configurable Background Scheduler (`JobDiscoveryScheduler`):** Disabled by default (`job-discovery.scheduler.enabled=false`). Includes an execution lock (`AtomicBoolean isRunning`) to prevent overlapping runs when enabled.
+#### Source Adapter (V1 — Simulated)
+
+Phase 7 V1 currently uses a **controlled/simulated source adapter** (`CompanyCareerPageSource`). It returns a fixed dataset of sample job listings for development and testing purposes. **It does not scrape arbitrary company career pages, public feeds, LinkedIn, Indeed, Naukri, Glassdoor, or any external website.**
+
+The pluggable `JobSource` interface and `JobSourceRegistry` support adding real adapters in future phases without modifying the discovery orchestration code.
+
+#### Supported Request Fields
+
+| Field | Type | Supported by V1 Adapter | Description |
+|-------|------|------------------------|-------------|
+| `source` | String (required) | ✅ | Source adapter name (V1: `COMPANY_WEBSITE` only) |
+| `keyword` | String | ✅ Filtered against dataset | Case-insensitive substring match on title and description |
+| `location` | String | ✅ Filtered against dataset | Case-insensitive substring match on listing location |
+| `company` | String | ✅ Filtered against dataset | Case-insensitive substring match on listing company name |
+| `maxResults` | Integer (1–100) | ✅ Bounds results | Maximum number of listings returned |
+| `employmentType` | Enum | ❌ Ignored | Each listing has its own fixed employment type; filter not applied |
+| `remoteType` | Enum | ❌ Ignored | Each listing has its own fixed remote type; filter not applied |
+
+#### Shared Extraction & Normalization Pipeline
+
+Phase 7 discovery reuses the exact same extraction and normalization core (`JobExtractionPipeline`, `JobNormalizationUtil`) as Phase 4 manual extraction, with zero code duplication.
+
+#### 3-Level Deterministic Deduplication
+
+Identity precedence (stronger levels take priority):
+
+1. **Level 1 — Source + External ID:** Identity key `(source, externalId)`. Authoritative when both are present. A match at Level 1 stops further deduplication checks.
+2. **Level 2 — Canonical URL:** Canonical URL computed from the raw job URL. A match at Level 2 stops further checks.
+3. **Level 3 — Composite SHA-256 Fingerprint:** Hash of `norm(company) + "|" + norm(title) + "|" + norm(location) [+ "|" + norm(description)]`. Only generated when all three minimum fields (company, title, location) are present. If any is missing/blank, no fingerprint is generated (prevents weak deduplication).
+
+#### Canonical URL Normalization
+
+- Scheme and hostname lowercased
+- Default ports removed (`:80` for HTTP, `:443` for HTTPS)
+- Trailing slashes removed (except root `/`)
+- Known tracking parameters stripped: `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, `ref`, `fbclid`
+- Functional query parameters preserved (e.g., `location=bangalore`)
+- `http://` and `https://` remain **distinct** (no scheme equivalence)
+
+#### Database Uniqueness & Concurrency Protection
+
+- **`(source, externalId)`** — enforced by JPA `@UniqueConstraint` (database-level unique constraint). Prevents duplicate rows when both values are present.
+- **`canonicalUrl`** — enforced by JPA `@UniqueConstraint` (database-level unique constraint). Prevents duplicate rows when canonical URL is present.
+- **`deduplicationFingerprint`** — normal index (not unique). Used for application-level deduplication but does not block inserts.
+- **Concurrent duplicate protection:** Each listing is persisted in its own `REQUIRES_NEW` transaction via `JobDiscoveryPersistenceHelper`. If a concurrent insert triggers a unique constraint violation (`DataIntegrityViolationException`), the inner transaction rolls back cleanly and the service re-fetches the existing record in a new clean context. No unexplained 500 errors.
+
+#### Discovery Statistics
+
+All counters are tracked **explicitly** (not derived indirectly):
+
+| Counter | Definition |
+|---------|------------|
+| `newJobs` | Listing that created a new database Job |
+| `updatedJobs` | Existing Job matched, at least one source-owned field changed |
+| `unchangedJobs` | Existing Job matched, no source-owned fields changed |
+| `duplicates` | Within-batch duplicate listings (same externalId appearing twice in the same batch) |
+| `failed` | Listing that could not be processed (extraction/persistence error) |
+
+Failures are never counted as duplicates.
+
+#### Refresh Semantics & Status Preservation
+
+When an existing job is re-discovered:
+- **Source-owned fields updated:** description, salary, URL, employment type, remote type, posted date, canonical URL, fingerprint
+- **`lastDiscoveredAt` updated:** Timestamp reflecting when discovery last observed this listing
+- **`createdAt` unchanged:** First persistence timestamp
+- **`updatedAt` changed only if source-owned fields actually changed**
+- **`job.getStatus()` NEVER modified:** Candidate tracking status (`SAVED`, `APPLIED`, `INTERVIEW`, `OFFER`, `REJECTED`, `ARCHIVED`) is strictly preserved across all discovery refreshes
+
+> **Note:** The current `JobStatus` model does not distinguish automatically discovered jobs from manually saved jobs, so V1 uses `SAVED` for newly discovered jobs.
+
+#### Source Failure Behavior
+
+If a source fails (network error, parser error, timeout, rate limit):
+- Existing jobs are **never deleted or expired**
+- `lastDiscoveredAt` is **not falsely updated** for listings that failed to process
+- The response returns `failed=1` at the source level
+
+#### Scheduler
+
+Background scheduling infrastructure exists (`JobDiscoveryScheduler`) but is **inactive by default**:
+- `job-discovery.scheduler.enabled=false` (safe default)
+- `@EnableScheduling` is not declared — the `@Scheduled` annotation is non-functional even if the bean were loaded
+- V1 uses manual `POST /api/jobs/discover` as the primary discovery mechanism
+- Scheduling activation is deferred to a future phase
+
+#### Security Restrictions
+
+- No arbitrary user-supplied URLs accepted (configured source destinations only)
+- `maxResults` bounded to 1–100
+- No CAPTCHA bypass, bot detection bypass, proxy rotation, or credential harvesting implemented
+- No real external network calls in V1
 
 #### Example Discovery Request & Response (`POST /api/jobs/discover`)
 
@@ -232,7 +313,6 @@ dot-field-backend/
   "source": "COMPANY_WEBSITE",
   "keyword": "Java Backend Developer",
   "location": "Bangalore",
-  "remoteType": "REMOTE",
   "maxResults": 20
 }
 ```
@@ -241,19 +321,20 @@ dot-field-backend/
 ```json
 {
   "data": {
-    "discovered": 2,
+    "discovered": 1,
     "newJobs": 1,
-    "updatedJobs": 1,
+    "updatedJobs": 0,
     "unchangedJobs": 0,
     "duplicates": 0,
     "failed": 0,
     "sourceResults": [
       {
         "source": "COMPANY_WEBSITE",
-        "discovered": 2,
+        "discovered": 1,
         "newJobs": 1,
-        "updatedJobs": 1,
+        "updatedJobs": 0,
         "unchangedJobs": 0,
+        "duplicates": 0,
         "failed": 0
       }
     ]
@@ -261,6 +342,14 @@ dot-field-backend/
   "message": "Job discovery completed successfully"
 }
 ```
+
+#### Known Limitations (V1)
+
+- Only one source adapter (`COMPANY_WEBSITE`) is available, and it returns simulated data
+- `employmentType` and `remoteType` request filters are not applied by the V1 adapter
+- No real external HTTP fetching occurs
+- Background scheduling is prepared but inactive
+- `JobStatus` does not distinguish discovered jobs from manually saved jobs
 
 ---
 
@@ -297,19 +386,21 @@ Status: Complete
 ### What's included in Phase 7
 
 - ✅ Pluggable `JobSource` strategy & `JobSourceRegistry`
-- ✅ `CompanyCareerPageSource` V1 adapter for configured public feeds (`COMPANY_WEBSITE`)
+- ✅ `CompanyCareerPageSource` V1 simulated adapter for development and testing (`COMPANY_WEBSITE`)
 - ✅ Refactored shared Phase 4 `JobExtractionPipeline` for zero normalization code duplication
 - ✅ `Job.java` entity enhancements: `externalId`, `canonicalUrl`, `deduplicationFingerprint`, `lastDiscoveredAt`
-- ✅ PostgreSQL unique indexes on `(source, externalId)` and `canonicalUrl` for concurrency race-condition protection
-- ✅ 3-level deterministic deduplication engine (`JobDeduplicationService`): Level 1 (External ID) $\to$ Level 2 (Canonical URL) $\to$ Level 3 (SHA-256 Fingerprint)
-- ✅ Conservative URL canonicalization (stripping `utm_*`, preserving functional params, keeping `http`/`https` distinct)
+- ✅ Database-level unique constraints on `(source, externalId)` and `canonicalUrl` via JPA `@UniqueConstraint`
+- ✅ 3-level deterministic deduplication engine (`JobDeduplicationService`): Level 1 (External ID) → Level 2 (Canonical URL) → Level 3 (SHA-256 Fingerprint)
+- ✅ Conservative URL canonicalization (stripping tracking params, preserving functional params, keeping `http`/`https` distinct)
+- ✅ Fingerprint safety: no weak fingerprint generated when company/title/location is missing
+- ✅ Concurrent duplicate protection via `REQUIRES_NEW` transactional boundary with `DataIntegrityViolationException` re-fetch
+- ✅ Explicit discovery statistics (newJobs, updatedJobs, unchangedJobs, duplicates, failed) — failures never counted as duplicates
 - ✅ Strict candidate application status preservation (`APPLIED`, `INTERVIEW`, `OFFER`, `REJECTED`, etc. preserved on external refresh)
-- ✅ 100% idempotent repeated discovery execution
+- ✅ 100% idempotent repeated discovery execution (verified by integration tests)
 - ✅ Fail-safe source handling without accidental job deletion or expiration
-- ✅ Configurable background scheduler (`JobDiscoveryScheduler`) disabled by default
+- ✅ Configurable background scheduler infrastructure (disabled by default, deferred for future activation)
 - ✅ REST API controller (`JobDiscoveryController`) exposing `POST /api/jobs/discover`
-- ✅ Comprehensive unit & integration tests (`JobSourceTest`, `CompanyCareerPageSourceTest`, `JobDeduplicationServiceTest`, `JobDiscoveryServiceTest`, `JobDiscoveryControllerTest`)
-- ✅ 163 total passing automated tests across Phase 1, 2, 3, 4, 5, 6, and 7
+- ✅ Comprehensive unit & integration tests including H2 persistence-level idempotency, concurrency, and status preservation tests
 
 ---
 
