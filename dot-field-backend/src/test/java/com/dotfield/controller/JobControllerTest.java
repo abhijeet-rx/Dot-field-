@@ -91,8 +91,8 @@ class JobControllerTest {
     }
 
     @Test
-    void createJob_negativeSalary_returnsBadRequest() throws Exception {
-        CreateJobRequest invalidRequest = CreateJobRequest.builder()
+    void createJob_negativeSalaryMinOrMax_returnsBadRequest() throws Exception {
+        CreateJobRequest invalidRequest1 = CreateJobRequest.builder()
                 .title("Software Engineer")
                 .company("Tech Co")
                 .salaryMin(new BigDecimal("-100.00"))
@@ -100,9 +100,21 @@ class JobControllerTest {
 
         mockMvc.perform(post("/jobs")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(invalidRequest)))
+                        .content(objectMapper.writeValueAsString(invalidRequest1)))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.errors.salaryMin").value("Minimum salary cannot be negative"));
+
+        CreateJobRequest invalidRequest2 = CreateJobRequest.builder()
+                .title("Software Engineer")
+                .company("Tech Co")
+                .salaryMax(new BigDecimal("-50.00"))
+                .build();
+
+        mockMvc.perform(post("/jobs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(invalidRequest2)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.salaryMax").value("Maximum salary cannot be negative"));
     }
 
     @Test
@@ -186,8 +198,8 @@ class JobControllerTest {
         mockMvc.perform(post("/jobs").contentType(MediaType.APPLICATION_JSON).content(objectMapper.writeValueAsString(job3)))
                 .andExpect(status().isCreated());
 
-        // Test combined filter: status=SAVED, company=google, remoteType=REMOTE
-        mockMvc.perform(get("/jobs?status=SAVED&company=google&remoteType=REMOTE&page=0&size=20"))
+        // Test combined filter: status=SAVED, company=google (case-insensitive partial match), remoteType=REMOTE
+        mockMvc.perform(get("/jobs?status=SAVED&company=google&source=linkedin&remoteType=REMOTE&page=0&size=20"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.content", hasSize(1)))
                 .andExpect(jsonPath("$.data.content[0].company").value("Google India"))
@@ -228,6 +240,8 @@ class JobControllerTest {
                 .location("Seattle, WA")
                 .status(JobStatus.INTERVIEW)
                 .remoteType(RemoteType.HYBRID)
+                .salaryMin(new BigDecimal("120000.00"))
+                .salaryMax(new BigDecimal("160000.00"))
                 .build();
 
         mockMvc.perform(put("/jobs/" + jobId)
@@ -241,7 +255,7 @@ class JobControllerTest {
     }
 
     @Test
-    void updateJob_missingRequiredFields_returnsBadRequest() throws Exception {
+    void updateJob_validationErrors_returnsBadRequest() throws Exception {
         CreateJobRequest createRequest = CreateJobRequest.builder()
                 .title("DevOps Engineer")
                 .company("Amazon")
@@ -255,16 +269,45 @@ class JobControllerTest {
 
         Long jobId = objectMapper.readTree(jsonResponse).get("data").get("id").asLong();
 
-        UpdateJobRequest invalidUpdateRequest = UpdateJobRequest.builder()
-                .title("Senior DevOps Lead")
-                .company("") // Missing company
+        // 1. Missing title and company
+        UpdateJobRequest invalidUpdateRequest1 = UpdateJobRequest.builder()
+                .title("")
+                .company(" ")
                 .build();
 
         mockMvc.perform(put("/jobs/" + jobId)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(objectMapper.writeValueAsString(invalidUpdateRequest)))
+                        .content(objectMapper.writeValueAsString(invalidUpdateRequest1)))
                 .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.title").value("Job title is required"))
                 .andExpect(jsonPath("$.errors.company").value("Company name is required"));
+
+        // 2. Negative salary
+        UpdateJobRequest invalidUpdateRequest2 = UpdateJobRequest.builder()
+                .title("DevOps Lead")
+                .company("Amazon")
+                .salaryMin(new BigDecimal("-1.00"))
+                .build();
+
+        mockMvc.perform(put("/jobs/" + jobId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(invalidUpdateRequest2)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors.salaryMin").value("Minimum salary cannot be negative"));
+
+        // 3. salaryMin > salaryMax
+        UpdateJobRequest invalidUpdateRequest3 = UpdateJobRequest.builder()
+                .title("DevOps Lead")
+                .company("Amazon")
+                .salaryMin(new BigDecimal("200000.00"))
+                .salaryMax(new BigDecimal("100000.00"))
+                .build();
+
+        mockMvc.perform(put("/jobs/" + jobId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(invalidUpdateRequest3)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Minimum salary cannot be greater than maximum salary"));
     }
 
     @Test
@@ -292,6 +335,19 @@ class JobControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.id").value(jobId))
                 .andExpect(jsonPath("$.data.status").value("OFFER"));
+    }
+
+    @Test
+    void updateJobStatus_nonExistent_returnsNotFound() throws Exception {
+        UpdateJobStatusRequest statusRequest = UpdateJobStatusRequest.builder()
+                .status(JobStatus.OFFER)
+                .build();
+
+        mockMvc.perform(patch("/jobs/999/status")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(statusRequest)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404));
     }
 
     @Test

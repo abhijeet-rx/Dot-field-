@@ -2,6 +2,7 @@ package com.dotfield.service;
 
 import com.dotfield.dto.CreateJobRequest;
 import com.dotfield.dto.JobResponse;
+import com.dotfield.dto.PagedResponse;
 import com.dotfield.dto.UpdateJobRequest;
 import com.dotfield.entity.EmploymentType;
 import com.dotfield.entity.Job;
@@ -14,13 +15,21 @@ import com.dotfield.repository.JobRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -131,6 +140,69 @@ class JobServiceTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void getAllJobs_withFiltersAndPagination_success() {
+        Pageable pageable = PageRequest.of(0, 10);
+        Page<Job> page = new PageImpl<>(List.of(sampleJob), pageable, 1);
+
+        when(jobRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
+
+        PagedResponse<JobResponse> result = jobService.getAllJobs(
+                JobStatus.SAVED,
+                "Google",
+                "LINKEDIN",
+                RemoteType.HYBRID,
+                EmploymentType.FULL_TIME,
+                pageable
+        );
+
+        assertNotNull(result);
+        assertEquals(1, result.getContent().size());
+        assertEquals(0, result.getPage());
+        assertEquals(10, result.getSize());
+        assertEquals(1, result.getTotalElements());
+        assertEquals(1, result.getTotalPages());
+        assertTrue(result.isLast());
+
+        verify(jobRepository).findAll(any(Specification.class), eq(pageable));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getAllJobs_noFilters_success() {
+        Pageable pageable = PageRequest.of(1, 5);
+        Page<Job> page = new PageImpl<>(List.of(sampleJob), pageable, 10);
+
+        when(jobRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
+
+        PagedResponse<JobResponse> result = jobService.getAllJobs(null, null, null, null, null, pageable);
+
+        assertNotNull(result);
+        assertEquals(1, result.getPage());
+        assertEquals(5, result.getSize());
+        assertEquals(10, result.getTotalElements());
+        assertEquals(2, result.getTotalPages());
+        assertFalse(result.isLast());
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void getAllJobs_noMatchingResults_returnsEmptyPagedResponse() {
+        Pageable pageable = PageRequest.of(0, 20);
+        Page<Job> emptyPage = new PageImpl<>(Collections.emptyList(), pageable, 0);
+
+        when(jobRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(emptyPage);
+
+        PagedResponse<JobResponse> result = jobService.getAllJobs(JobStatus.REJECTED, "NonExistent", "OTHER", RemoteType.ONSITE, EmploymentType.CONTRACT, pageable);
+
+        assertNotNull(result);
+        assertTrue(result.getContent().isEmpty());
+        assertEquals(0, result.getTotalElements());
+        assertEquals(0, result.getTotalPages());
+        assertTrue(result.isLast());
+    }
+
+    @Test
     void updateJob_success() {
         UpdateJobRequest updateRequest = UpdateJobRequest.builder()
                 .title("Senior Software Engineer")
@@ -151,6 +223,22 @@ class JobServiceTest {
 
         assertNotNull(response);
         verify(jobRepository, times(1)).save(sampleJob);
+    }
+
+    @Test
+    void updateJob_nonExistent_throwsResourceNotFoundException() {
+        UpdateJobRequest updateRequest = UpdateJobRequest.builder()
+                .title("Senior Engineer")
+                .company("Google")
+                .build();
+
+        when(jobRepository.findById(999L)).thenReturn(Optional.empty());
+
+        ResourceNotFoundException exception = assertThrows(ResourceNotFoundException.class,
+                () -> jobService.updateJob(999L, updateRequest));
+
+        assertEquals("Job not found with id: 999", exception.getMessage());
+        verify(jobRepository, never()).save(any(Job.class));
     }
 
     @Test
@@ -181,6 +269,17 @@ class JobServiceTest {
         assertNotNull(response);
         assertEquals(JobStatus.INTERVIEW, sampleJob.getStatus());
         verify(jobRepository, times(1)).save(sampleJob);
+    }
+
+    @Test
+    void updateJobStatus_nonExistent_throwsResourceNotFoundException() {
+        when(jobRepository.findById(999L)).thenReturn(Optional.empty());
+
+        ResourceNotFoundException exception = assertThrows(ResourceNotFoundException.class,
+                () -> jobService.updateJobStatus(999L, JobStatus.OFFER));
+
+        assertEquals("Job not found with id: 999", exception.getMessage());
+        verify(jobRepository, never()).save(any(Job.class));
     }
 
     @Test
