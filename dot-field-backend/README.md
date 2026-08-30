@@ -3,6 +3,7 @@
 > DOT Field is a personal job discovery and resume-tailoring platform.
 > Phase 1 establishes the backend foundation using Spring Boot and PostgreSQL.
 > Phase 2 implements the Candidate Profile subsystem.
+> Phase 3 implements the Job Management subsystem.
 
 ---
 
@@ -106,15 +107,15 @@ dot-field-backend/
 │   ├── DotFieldApplication.java    # Spring Boot entry point
 │   ├── controller/                 # REST controllers (thin — delegate to services)
 │   ├── service/                    # Business logic layer
-│   ├── repository/                 # Spring Data JPA repositories
-│   ├── entity/                     # JPA entities (database models)
-│   ├── dto/                        # Data Transfer Objects (API boundaries)
+│   ├── repository/                 # Spring Data JPA repositories & specifications
+│   ├── entity/                     # JPA entities & enums (database models)
+│   ├── dto/                        # Data Transfer Objects & PagedResponse wrapper
 │   ├── mapper/                     # Entity ↔ DTO conversion
 │   ├── exception/                  # Global error handling
 │   └── config/                     # Spring configuration beans
 ├── src/main/resources/
 │   └── application.properties      # App configuration (uses env vars)
-├── src/test/                       # Tests (JUnit 5 + Spring Boot Test)
+├── src/test/                       # Unit & Integration tests (JUnit 5 + Mockito + MockMvc)
 ├── pom.xml                         # Maven dependencies
 ├── .env.example                    # Environment variable template
 └── .gitignore
@@ -123,12 +124,12 @@ dot-field-backend/
 ### Architecture
 
 ```
-Controller → Service → Repository → PostgreSQL
+Controller → Service → Repository / Specification → PostgreSQL
 ```
 
 - **Controllers** are thin — they validate input and delegate to services.
-- **Services** contain all business logic.
-- **Repositories** handle persistence only.
+- **Services** contain all business logic, transaction boundaries, and salary validations.
+- **Repositories & Specifications** handle dynamic query filtering and pagination.
 - **DTOs** are used at API boundaries; JPA entities are never exposed directly.
 
 ---
@@ -190,19 +191,6 @@ Categories: `LANGUAGE`, `FRONTEND`, `BACKEND`, `DATABASE`, `TOOL`, `FRAMEWORK`, 
 | `PUT`  | `/api/profile/education/{id}` | Update education record |
 | `DELETE` | `/api/profile/education/{id}` | Delete education record |
 
-#### Add Education Request Example (`POST /api/profile/education`)
-
-```json
-{
-  "institution": "MIT",
-  "degree": "Bachelor of Science",
-  "fieldOfStudy": "Computer Science",
-  "startDate": "2018-09-01",
-  "endDate": "2022-05-30",
-  "grade": "3.9 GPA"
-}
-```
-
 ---
 
 ### Project Endpoints
@@ -213,18 +201,6 @@ Categories: `LANGUAGE`, `FRONTEND`, `BACKEND`, `DATABASE`, `TOOL`, `FRAMEWORK`, 
 | `POST` | `/api/profile/projects` | Add project record |
 | `PUT`  | `/api/profile/projects/{id}` | Update project record |
 | `DELETE` | `/api/profile/projects/{id}` | Delete project record |
-
-#### Add Project Request Example (`POST /api/profile/projects`)
-
-```json
-{
-  "name": "DOT Field Backend",
-  "description": "Job discovery and resume tailoring backend",
-  "githubUrl": "https://github.com/example/dot-field",
-  "liveUrl": "https://dotfield.dev",
-  "technologies": ["Java 21", "Spring Boot", "PostgreSQL"]
-}
-```
 
 ---
 
@@ -237,15 +213,107 @@ Categories: `LANGUAGE`, `FRONTEND`, `BACKEND`, `DATABASE`, `TOOL`, `FRAMEWORK`, 
 | `PUT`  | `/api/profile/experience/{id}` | Update experience record |
 | `DELETE` | `/api/profile/experience/{id}` | Delete experience record |
 
-#### Add Experience Request Example (`POST /api/profile/experience`)
+---
+
+## API Documentation — Phase 3 Job Management
+
+### Base Path: `/api`
+
+### Job Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST`   | `/api/jobs` | Create a new job opportunity |
+| `GET`    | `/api/jobs` | List jobs with pagination & composable filters |
+| `GET`    | `/api/jobs/{id}` | Retrieve a single job opportunity by ID |
+| `PUT`    | `/api/jobs/{id}` | Complete update of a job opportunity |
+| `PATCH`  | `/api/jobs/{id}/status` | Update job status |
+| `DELETE` | `/api/jobs/{id}` | Delete a job opportunity |
+
+---
+
+### Query Parameters for `GET /api/jobs`
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | `int` | `0` | Zero-indexed page number |
+| `size` | `int` | `20` | Page size |
+| `status` | `JobStatus` | `null` | Exact status match (`SAVED`, `APPLIED`, `REJECTED`, `INTERVIEW`, `OFFER`, `ARCHIVED`) |
+| `company` | `String` | `null` | Partial, case-insensitive company name search |
+| `source` | `String` | `null` | Exact case-insensitive source match (e.g. `LINKEDIN`, `MANUAL`) |
+| `remoteType` | `RemoteType` | `null` | Exact remote type match (`ONSITE`, `HYBRID`, `REMOTE`, `OTHER`) |
+| `employmentType` | `EmploymentType` | `null` | Exact employment type match (`FULL_TIME`, `PART_TIME`, `CONTRACT`, `INTERNSHIP`, `TEMPORARY`, `OTHER`) |
+
+#### Example Paginated & Filtered Query
+
+```http
+GET /api/jobs?page=0&size=20&status=SAVED&company=google&remoteType=REMOTE
+```
+
+---
+
+### Request & Response Examples
+
+#### Create Job Request (`POST /api/jobs`)
 
 ```json
 {
-  "company": "Acme Corp",
-  "role": "Senior Software Engineer",
-  "description": "Led backend platform architecture and microservices design",
-  "startDate": "2022-06-01",
-  "endDate": "2024-08-15"
+  "title": "Software Engineer",
+  "company": "Google",
+  "location": "Mountain View, CA",
+  "description": "Backend platform engineering",
+  "jobUrl": "https://careers.google.com/jobs/123",
+  "source": "LINKEDIN",
+  "employmentType": "FULL_TIME",
+  "remoteType": "HYBRID",
+  "status": "SAVED",
+  "salaryMin": 140000.00,
+  "salaryMax": 190000.00,
+  "currency": "USD",
+  "postedDate": "2026-08-15"
+}
+```
+
+#### Successful Paginated Response (`GET /api/jobs?page=0&size=20`)
+
+```json
+{
+  "data": {
+    "content": [
+      {
+        "id": 1,
+        "title": "Software Engineer",
+        "company": "Google",
+        "location": "Mountain View, CA",
+        "description": "Backend platform engineering",
+        "jobUrl": "https://careers.google.com/jobs/123",
+        "source": "LINKEDIN",
+        "employmentType": "FULL_TIME",
+        "remoteType": "HYBRID",
+        "status": "SAVED",
+        "salaryMin": 140000.00,
+        "salaryMax": 190000.00,
+        "currency": "USD",
+        "postedDate": "2026-08-15",
+        "createdAt": "2026-08-30T12:00:00",
+        "updatedAt": "2026-08-30T12:00:00"
+      }
+    ],
+    "page": 0,
+    "size": 20,
+    "totalElements": 1,
+    "totalPages": 1,
+    "last": true
+  },
+  "message": "Jobs retrieved successfully"
+}
+```
+
+#### Update Status Request (`PATCH /api/jobs/1/status`)
+
+```json
+{
+  "status": "APPLIED"
 }
 ```
 
@@ -268,7 +336,7 @@ Categories: `LANGUAGE`, `FRONTEND`, `BACKEND`, `DATABASE`, `TOOL`, `FRAMEWORK`, 
 {
   "status": 404,
   "message": "Resource not found",
-  "timestamp": "2025-01-01T12:00:00"
+  "timestamp": "2026-08-30T12:00:00"
 }
 ```
 
@@ -278,10 +346,10 @@ Categories: `LANGUAGE`, `FRONTEND`, `BACKEND`, `DATABASE`, `TOOL`, `FRAMEWORK`, 
 {
   "status": 400,
   "message": "Validation failed",
-  "timestamp": "2025-01-01T12:00:00",
+  "timestamp": "2026-08-30T12:00:00",
   "errors": {
-    "email": "must not be blank",
-    "name": "size must be between 2 and 100"
+    "title": "Job title is required",
+    "company": "Company name is required"
   }
 }
 ```
@@ -291,38 +359,37 @@ Categories: `LANGUAGE`, `FRONTEND`, `BACKEND`, `DATABASE`, `TOOL`, `FRAMEWORK`, 
 ## Current Phase
 
 ```
-Phase 2 — Candidate Profile
+Phase 3 — Job Management
 Status: Complete
 ```
 
-### What's included in Phase 2
+### What's included in Phase 3
 
-- ✅ Candidate `Profile`, `Skill`, `Education`, `Project`, and `Experience` JPA entities & database tables
-- ✅ JPA relationships (`@OneToMany`, `@ManyToOne`, `@ElementCollection`) with cascade and orphan removal
-- ✅ Skill category classification (`SkillCategory` enum)
-- ✅ DTO layer (`ProfileResponse`, `UpdateProfileRequest`, `SkillRequest`, `SkillResponse`, `EducationRequest`, `EducationResponse`, `ProjectRequest`, `ProjectResponse`, `ExperienceRequest`, `ExperienceResponse`)
-- ✅ Bean Validation for all input DTOs
-- ✅ Date range validation (`startDate <= endDate`)
-- ✅ Case-insensitive duplicate skill validation
-- ✅ Spring Data JPA Repositories
-- ✅ Mapper layer (`ProfileMapper`)
-- ✅ Business logic services (`ProfileService`, `SkillService`, `EducationService`, `ProjectService`, `ExperienceService`)
-- ✅ Thin REST Controllers (`ProfileController`, `SkillController`, `EducationController`, `ProjectController`, `ExperienceController`)
-- ✅ Global exception handling for `BadRequestException` and `ResourceNotFoundException`
-- ✅ Complete integration test suite (21 passing tests)
+- ✅ Job domain model (`Job` JPA entity mapped to `jobs` PostgreSQL table)
+- ✅ `EmploymentType`, `RemoteType`, and `JobStatus` enums with `@Enumerated(EnumType.STRING)`
+- ✅ Extensible string-based `source` representation with `"MANUAL"` default and `"OTHER"` semantic distinction
+- ✅ JPA lifecycle listeners (`@PrePersist`, `@PreUpdate`) for timestamps (`createdAt`, `updatedAt`) and defaults
+- ✅ DTO Isolation Layer (`JobResponse`, `PagedResponse<T>`, `CreateJobRequest`, `UpdateJobRequest`, `UpdateJobStatusRequest`)
+- ✅ Bean Validation for incoming requests and business range validation (`salaryMin <= salaryMax`)
+- ✅ Spring Data JPA `JobRepository` & composable `JobSpecification` dynamic filters
+- ✅ `JobMapper` component for bidirectional DTO ↔ Entity conversion
+- ✅ Transactional `JobService` covering CRUD, status updates, pagination, and error handling
+- ✅ Thin `JobController` REST endpoints under `/api/jobs`
+- ✅ Service unit tests with Mockito (`JobServiceTest`)
+- ✅ Controller integration test suite (`JobControllerTest`) with MockMvc and H2 (45 total passing tests across Phase 1, 2, and 3)
 
 ---
 
 ## Future Phases
 
-| Phase | Focus                     |
-|-------|---------------------------|
-| 3     | Job Management            |
-| 4     | Job Extraction            |
-| 5     | Job Analysis & Matching   |
-| 6     | Resume Tailoring          |
-
-These phases will be implemented incrementally in future iterations.
+| Phase | Focus                     | Status       |
+|-------|---------------------------|--------------|
+| 1     | Backend Foundation        | ✅ Complete  |
+| 2     | Candidate Profile         | ✅ Complete  |
+| 3     | Job Management            | ✅ Complete  |
+| 4     | Job Extraction            | ⏳ Next      |
+| 5     | Job Analysis & Matching   | ⏳           |
+| 6     | Resume Tailoring          | ⏳           |
 
 ---
 
