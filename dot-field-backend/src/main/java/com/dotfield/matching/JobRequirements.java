@@ -22,7 +22,12 @@ public class JobRequirements {
     private Set<String> preferredSkills = new HashSet<>();
 
     private Integer minimumExperienceYears;
-    private String requiredEducation;
+    private String experienceTechnology; // Null if general experience requirement
+
+    private DegreeLevel requiredEducationLevel;
+    private String requiredEducationField; // e.g. "computer science", "engineering", null if unspecified
+    private String requiredEducation; // Summary string e.g. "Bachelor in Computer Science"
+
     private String location;
     private RemoteType remoteType;
 

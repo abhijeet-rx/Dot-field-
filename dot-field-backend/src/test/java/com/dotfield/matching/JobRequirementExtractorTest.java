@@ -17,15 +17,15 @@ class JobRequirementExtractorTest {
     }
 
     @Test
-    void extract_extractsRequiredAndPreferredSkillsAndExperienceAndEducation() {
+    void extract_extractsRequiredAndPreferredSkillsAndTechExperienceAndEducation() {
         Job job = Job.builder()
-                .title("Senior Java Developer")
+                .title("Senior Java Engineer")
                 .location("Bangalore, India")
                 .remoteType(RemoteType.HYBRID)
                 .description("""
                         Required Qualifications:
-                        - Must have 5+ years of experience in Java and Spring Boot.
-                        - Strong experience with PostgreSQL and Docker.
+                        - Must have 3+ years of Java experience.
+                        - Strong experience with Spring Boot and PostgreSQL.
                         - Bachelor degree in Computer Science required.
                         
                         Preferred Qualifications:
@@ -39,13 +39,42 @@ class JobRequirementExtractorTest {
         assertTrue(reqs.getRequiredSkills().contains("java"));
         assertTrue(reqs.getRequiredSkills().contains("spring boot"));
         assertTrue(reqs.getRequiredSkills().contains("postgresql"));
-        assertTrue(reqs.getRequiredSkills().contains("docker"));
         assertTrue(reqs.getPreferredSkills().contains("kubernetes"));
         assertTrue(reqs.getPreferredSkills().contains("aws"));
-        assertEquals(5, reqs.getMinimumExperienceYears());
-        assertEquals("Bachelor", reqs.getRequiredEducation());
+        assertEquals(3, reqs.getMinimumExperienceYears());
+        assertEquals("java", reqs.getExperienceTechnology());
+        assertEquals(DegreeLevel.BACHELOR, reqs.getRequiredEducationLevel());
+        assertEquals("computer science", reqs.getRequiredEducationField());
         assertEquals("Bangalore, India", reqs.getLocation());
         assertEquals(RemoteType.HYBRID, reqs.getRemoteType());
+    }
+
+    @Test
+    void extract_generalExperienceRequirement_technologyIsNull() {
+        Job job = Job.builder()
+                .title("Software Engineer")
+                .description("Requires 5+ years of professional experience.")
+                .build();
+
+        JobRequirements reqs = extractor.extract(job);
+
+        assertEquals(5, reqs.getMinimumExperienceYears());
+        assertNull(reqs.getExperienceTechnology());
+    }
+
+    @Test
+    void extract_handlesTitleAndDescriptionSeparatelyWithoutOffsetCorruption() {
+        Job job = Job.builder()
+                .title("Lead React Engineer")
+                .description("Preferred: AWS, Docker")
+                .build();
+
+        JobRequirements reqs = extractor.extract(job);
+
+        assertTrue(reqs.getRequiredSkills().contains("react"));
+        assertTrue(reqs.getPreferredSkills().contains("aws"));
+        assertTrue(reqs.getPreferredSkills().contains("docker"));
+        assertFalse(reqs.getPreferredSkills().contains("react"));
     }
 
     @Test
@@ -61,6 +90,6 @@ class JobRequirementExtractorTest {
         assertTrue(reqs.getRequiredSkills().isEmpty());
         assertTrue(reqs.getPreferredSkills().isEmpty());
         assertNull(reqs.getMinimumExperienceYears());
-        assertNull(reqs.getRequiredEducation());
+        assertNull(reqs.getRequiredEducationLevel());
     }
 }

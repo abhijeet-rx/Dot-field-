@@ -20,10 +20,11 @@ class ExperienceMatcherTest {
     }
 
     @Test
-    void match_exceedsRequirement_returns100() {
+    void match_generalExperienceRequirement_exceedsRequirement_returns100() {
         Profile profile = Profile.builder()
                 .experience(List.of(
                         Experience.builder()
+                                .role("Software Engineer")
                                 .startDate(LocalDate.now().minusYears(4))
                                 .endDate(LocalDate.now())
                                 .build()
@@ -38,14 +39,64 @@ class ExperienceMatcherTest {
 
         assertEquals(100, result.score());
         assertEquals("MEETS_REQUIREMENT", result.status());
-        assertTrue(result.analysis().contains("meeting the required 3 years"));
     }
 
     @Test
-    void match_belowRequirement_returnsProportionalScore() {
+    void match_technologySpecificRequirement_candidateHasMatchingTechExperience_returns100() {
         Profile profile = Profile.builder()
                 .experience(List.of(
                         Experience.builder()
+                                .role("Java Developer")
+                                .description("Building backend Java services")
+                                .startDate(LocalDate.now().minusYears(3))
+                                .endDate(LocalDate.now())
+                                .build()
+                ))
+                .build();
+
+        JobRequirements reqs = JobRequirements.builder()
+                .minimumExperienceYears(2)
+                .experienceTechnology("java")
+                .build();
+
+        ExperienceMatcher.ExperienceResult result = matcher.match(profile, reqs);
+
+        assertEquals(100, result.score());
+        assertEquals("MEETS_REQUIREMENT", result.status());
+        assertTrue(result.analysis().contains("Java experience"));
+    }
+
+    @Test
+    void match_technologySpecificRequirement_unconfirmableFromStructuredData_returnsUnknown() {
+        Profile profile = Profile.builder()
+                .experience(List.of(
+                        Experience.builder()
+                                .role("General Engineer")
+                                .description("Worked on legacy systems")
+                                .startDate(LocalDate.now().minusYears(5))
+                                .endDate(LocalDate.now())
+                                .build()
+                ))
+                .build();
+
+        JobRequirements reqs = JobRequirements.builder()
+                .minimumExperienceYears(3)
+                .experienceTechnology("java")
+                .build();
+
+        ExperienceMatcher.ExperienceResult result = matcher.match(profile, reqs);
+
+        assertNull(result.score());
+        assertEquals("UNKNOWN", result.status());
+        assertTrue(result.analysis().contains("cannot be verified"));
+    }
+
+    @Test
+    void match_generalExperienceRequirement_belowRequirement_returnsProportionalScore() {
+        Profile profile = Profile.builder()
+                .experience(List.of(
+                        Experience.builder()
+                                .role("Engineer")
                                 .startDate(LocalDate.now().minusYears(2))
                                 .endDate(LocalDate.now())
                                 .build()
@@ -58,7 +109,6 @@ class ExperienceMatcherTest {
 
         ExperienceMatcher.ExperienceResult result = matcher.match(profile, reqs);
 
-        // 2 years / 4 years = 50%
         assertEquals(50, result.score());
         assertEquals("BELOW_REQUIREMENT", result.status());
     }

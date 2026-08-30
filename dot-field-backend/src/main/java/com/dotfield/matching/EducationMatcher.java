@@ -17,9 +17,11 @@ public class EducationMatcher {
     ) {}
 
     public EducationResult match(Profile profile, JobRequirements requirements) {
-        String reqEdu = requirements.getRequiredEducation();
+        DegreeLevel reqLevel = requirements.getRequiredEducationLevel();
+        String reqField = requirements.getRequiredEducationField();
+        String reqSummary = requirements.getRequiredEducation();
 
-        if (reqEdu == null || reqEdu.isBlank()) {
+        if (reqLevel == null && (reqSummary == null || reqSummary.isBlank())) {
             return new EducationResult(
                     null,
                     "NOT_REQUIRED",
@@ -35,57 +37,108 @@ public class EducationMatcher {
             return new EducationResult(
                     null,
                     "UNKNOWN",
-                    "Candidate profile contains no education records to verify required " + reqEdu + " degree."
+                    "Candidate profile contains no education records to verify required " +
+                            (reqSummary != null ? reqSummary : "degree") + "."
             );
         }
 
-        String reqEduLower = reqEdu.toLowerCase(Locale.ROOT);
-        boolean exactMatch = false;
-        boolean partialMatch = false;
+        if (reqLevel == null) {
+            reqLevel = DegreeLevel.BACHELOR; // Default fallback if summary string existed without level
+        }
+
+        DegreeLevel bestCandidateLevel = DegreeLevel.UNKNOWN;
+        String bestDegreeTitle = "";
+        String bestFieldTitle = "";
+
+        boolean exactFieldMatch = false;
+        boolean relatedFieldMatch = false;
 
         for (Education edu : eduList) {
-            String degree = edu.getDegree() != null ? edu.getDegree().toLowerCase(Locale.ROOT) : "";
-            String field = edu.getFieldOfStudy() != null ? edu.getFieldOfStudy().toLowerCase(Locale.ROOT) : "";
-            String combined = degree + " " + field;
+            String degreeStr = edu.getDegree() != null ? edu.getDegree().trim() : "";
+            String fieldStr = edu.getFieldOfStudy() != null ? edu.getFieldOfStudy().trim() : "";
 
-            if (reqEduLower.contains("phd")) {
-                if (combined.contains("phd") || combined.contains("doctorate")) {
-                    exactMatch = true;
+            DegreeLevel candidateLevel = parseDegreeLevel(degreeStr + " " + fieldStr);
+            if (candidateLevel.getLevel() > bestCandidateLevel.getLevel()) {
+                bestCandidateLevel = candidateLevel;
+                bestDegreeTitle = degreeStr;
+                bestFieldTitle = fieldStr;
+            }
+
+            if (reqField != null && !reqField.isBlank()) {
+                String fieldLower = fieldStr.toLowerCase(Locale.ROOT);
+                String reqFieldLower = reqField.toLowerCase(Locale.ROOT);
+
+                if (fieldLower.contains(reqFieldLower) || reqFieldLower.contains(fieldLower)) {
+                    exactFieldMatch = true;
+                } else if (isRelatedField(fieldLower, reqFieldLower)) {
+                    relatedFieldMatch = true;
                 }
-            } else if (reqEduLower.contains("master")) {
-                if (combined.contains("phd") || combined.contains("doctorate")) {
-                    partialMatch = true; // Higher level
-                } else if (combined.contains("master") || combined.contains("m.s.") || combined.contains("m.tech")) {
-                    exactMatch = true;
-                }
-            } else if (reqEduLower.contains("bachelor") || reqEduLower.contains("degree")) {
-                if (combined.contains("phd") || combined.contains("master") || combined.contains("m.s.")) {
-                    partialMatch = true; // Higher level
-                } else if (combined.contains("bachelor") || combined.contains("b.s.") || combined.contains("b.tech") || combined.contains("b.e.") || combined.contains("degree")) {
-                    exactMatch = true;
-                }
+            } else {
+                exactFieldMatch = true;
             }
         }
 
-        if (exactMatch) {
+        boolean levelMeetsOrExceeds = bestCandidateLevel.getLevel() >= reqLevel.getLevel();
+        boolean levelExceeds = bestCandidateLevel.getLevel() > reqLevel.getLevel();
+        boolean levelBelow = bestCandidateLevel.getLevel() < reqLevel.getLevel();
+
+        String displayReq = reqSummary != null ? reqSummary : reqLevel.name();
+
+        if (levelMeetsOrExceeds && exactFieldMatch) {
             return new EducationResult(
                     100,
                     "MATCH",
-                    "Candidate holds a degree matching the required " + reqEdu + " level."
+                    String.format("Candidate holds a %s degree in %s, matching the required %s.",
+                            bestDegreeTitle, bestFieldTitle, displayReq)
             );
-        } else if (partialMatch) {
+        } else if (levelExceeds || (levelMeetsOrExceeds && relatedFieldMatch)) {
             return new EducationResult(
                     75,
                     "PARTIAL_MATCH",
-                    "Candidate holds an advanced degree or related field qualification."
+                    String.format("Candidate holds a %s in %s, providing an advanced degree level or related field qualification.",
+                            bestDegreeTitle, bestFieldTitle)
             );
         } else {
             return new EducationResult(
                     0,
                     "MISMATCH",
-                    "Candidate education does not match the required " + reqEdu + " level."
+                    String.format("Candidate education (%s in %s) does not meet the required %s level and field.",
+                            bestDegreeTitle, bestFieldTitle, displayReq)
             );
         }
+    }
+
+    private DegreeLevel parseDegreeLevel(String text) {
+        String lower = text.toLowerCase(Locale.ROOT);
+        if (lower.contains("phd") || lower.contains("doctorate") || lower.contains("ph.d.")) {
+            return DegreeLevel.DOCTORATE;
+        }
+        if (lower.contains("master") || lower.contains("m.s.") || lower.contains("m.tech") || lower.contains("m.b.a.") || lower.contains("mba")) {
+            return DegreeLevel.MASTER;
+        }
+        if (lower.contains("bachelor") || lower.contains("b.s.") || lower.contains("b.tech") || lower.contains("b.e.") || lower.contains("degree")) {
+            return DegreeLevel.BACHELOR;
+        }
+        if (lower.contains("associate") || lower.contains("a.s.") || lower.contains("a.a.")) {
+            return DegreeLevel.ASSOCIATE;
+        }
+        if (lower.contains("high school") || lower.contains("diploma")) {
+            return DegreeLevel.HIGH_SCHOOL;
+        }
+        return DegreeLevel.UNKNOWN;
+    }
+
+    private boolean isRelatedField(String candidateField, String requiredField) {
+        if (requiredField.contains("computer science") || requiredField.contains("cs")) {
+            return candidateField.contains("information technology") ||
+                    candidateField.contains("software engineering") ||
+                    candidateField.contains("computer engineering") ||
+                    candidateField.contains("it");
+        }
+        if (requiredField.contains("engineering")) {
+            return candidateField.contains("computer science") || candidateField.contains("technology");
+        }
+        return false;
     }
 
 }

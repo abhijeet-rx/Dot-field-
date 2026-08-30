@@ -19,7 +19,7 @@ class EducationMatcherTest {
     }
 
     @Test
-    void match_exactDegreeMatch_returns100() {
+    void match_exactLevelAndMatchingField_returns100() {
         Profile profile = Profile.builder()
                 .education(List.of(
                         Education.builder()
@@ -30,7 +30,9 @@ class EducationMatcherTest {
                 .build();
 
         JobRequirements reqs = JobRequirements.builder()
-                .requiredEducation("Bachelor")
+                .requiredEducationLevel(DegreeLevel.BACHELOR)
+                .requiredEducationField("computer science")
+                .requiredEducation("Bachelor in Computer Science")
                 .build();
 
         EducationMatcher.EducationResult result = matcher.match(profile, reqs);
@@ -40,7 +42,7 @@ class EducationMatcherTest {
     }
 
     @Test
-    void match_higherDegreeMatch_returns75() {
+    void match_masterForBachelorReq_returns75PartialMatch() {
         Profile profile = Profile.builder()
                 .education(List.of(
                         Education.builder()
@@ -51,13 +53,36 @@ class EducationMatcherTest {
                 .build();
 
         JobRequirements reqs = JobRequirements.builder()
-                .requiredEducation("Bachelor")
+                .requiredEducationLevel(DegreeLevel.BACHELOR)
+                .requiredEducationField("computer science")
                 .build();
 
         EducationMatcher.EducationResult result = matcher.match(profile, reqs);
 
         assertEquals(75, result.score());
         assertEquals("PARTIAL_MATCH", result.status());
+    }
+
+    @Test
+    void match_mismatchedField_returns0Mismatch() {
+        Profile profile = Profile.builder()
+                .education(List.of(
+                        Education.builder()
+                                .degree("Bachelor of Science")
+                                .fieldOfStudy("Mechanical Engineering")
+                                .build()
+                ))
+                .build();
+
+        JobRequirements reqs = JobRequirements.builder()
+                .requiredEducationLevel(DegreeLevel.BACHELOR)
+                .requiredEducationField("computer science")
+                .build();
+
+        EducationMatcher.EducationResult result = matcher.match(profile, reqs);
+
+        assertEquals(0, result.score());
+        assertEquals("MISMATCH", result.status());
     }
 
     @Test
@@ -74,7 +99,9 @@ class EducationMatcherTest {
     @Test
     void match_emptyCandidateEducation_returnsNullScore() {
         Profile profile = Profile.builder().education(List.of()).build();
-        JobRequirements reqs = JobRequirements.builder().requiredEducation("Bachelor").build();
+        JobRequirements reqs = JobRequirements.builder()
+                .requiredEducationLevel(DegreeLevel.BACHELOR)
+                .build();
 
         EducationMatcher.EducationResult result = matcher.match(profile, reqs);
 

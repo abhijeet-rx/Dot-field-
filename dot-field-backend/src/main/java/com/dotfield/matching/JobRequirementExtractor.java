@@ -18,7 +18,14 @@ public class JobRequirementExtractor {
             "ruby", "rails", "node", "nodejs", "html", "css", "tailwind", "sql"
     );
 
-    private static final Pattern EXPERIENCE_PATTERN = Pattern.compile("(\\d+)\\+?\\s*(?:years|yrs)", Pattern.CASE_INSENSITIVE);
+    private static final Pattern EXP_TECH_PATTERN = Pattern.compile(
+            "(\\d+)\\+?\\s*(?:years|yrs)(?:\\s+of\\s+(?:experience\\s+in\\s+)?([a-zA-Z0-9#+.-]+))?",
+            Pattern.CASE_INSENSITIVE
+    );
+
+    private static final List<String> NON_TECH_EXP_WORDS = List.of(
+            "experience", "professional", "work", "software", "engineering", "industry", "relevant", "total"
+    );
 
     public JobRequirements extract(Job job) {
         if (job == null) {
@@ -27,51 +34,60 @@ public class JobRequirementExtractor {
 
         String description = job.getDescription() != null ? job.getDescription() : "";
         String title = job.getTitle() != null ? job.getTitle() : "";
-        String combinedText = (title + " " + description).toLowerCase(Locale.ROOT);
 
         Set<String> requiredSkills = new HashSet<>();
         Set<String> preferredSkills = new HashSet<>();
 
-        // Section splitting for required vs preferred skills
+        // Extract skills from title into required
+        extractSkillsFromText(title.toLowerCase(Locale.ROOT), requiredSkills);
+
+        // Section splitting within description strictly using description offsets
         String descLower = description.toLowerCase(Locale.ROOT);
         int prefIndex = indexOfAny(descLower, "preferred", "nice to have", "bonus", "plus", "desired", "preferred qualifications");
         int reqIndex = indexOfAny(descLower, "required", "must have", "mandatory", "essential", "minimum qualifications", "requirements");
 
-        if (prefIndex != -1 && reqIndex != -1 && prefIndex > reqIndex) {
-            String reqText = combinedText.substring(0, title.length() + prefIndex + 1);
-            String prefText = combinedText.substring(title.length() + prefIndex);
+        String reqDescText;
+        String prefDescText;
 
-            extractSkillsFromText(reqText, requiredSkills);
-            extractSkillsFromText(prefText, preferredSkills);
-            preferredSkills.removeAll(requiredSkills);
-        } else if (prefIndex != -1 && reqIndex == -1) {
-            String reqText = combinedText.substring(0, title.length() + prefIndex + 1);
-            String prefText = combinedText.substring(title.length() + prefIndex);
-
-            extractSkillsFromText(reqText, requiredSkills);
-            extractSkillsFromText(prefText, preferredSkills);
-            preferredSkills.removeAll(requiredSkills);
+        if (prefIndex != -1) {
+            if (reqIndex != -1 && reqIndex < prefIndex) {
+                reqDescText = descLower.substring(reqIndex, prefIndex);
+                prefDescText = descLower.substring(prefIndex);
+            } else {
+                reqDescText = descLower.substring(0, prefIndex);
+                prefDescText = descLower.substring(prefIndex);
+            }
         } else {
-            extractSkillsFromText(combinedText, requiredSkills);
+            reqDescText = descLower;
+            prefDescText = "";
         }
 
-        // Minimum Experience Extraction
-        Integer minExp = extractMinimumExperience(combinedText);
+        extractSkillsFromText(reqDescText, requiredSkills);
+        extractSkillsFromText(prefDescText, preferredSkills);
+        preferredSkills.removeAll(requiredSkills);
 
-        // Required Education Extraction
-        String education = extractEducationRequirement(combinedText);
+        // Experience Extraction
+        String combinedText = (title + " " + description).toLowerCase(Locale.ROOT);
+        ParsedExperience parsedExp = extractExperienceDetails(combinedText);
+
+        // Education Extraction
+        ParsedEducation parsedEdu = extractEducationDetails(combinedText);
 
         return JobRequirements.builder()
                 .requiredSkills(SkillNormalizationUtil.normalizeSet(requiredSkills))
                 .preferredSkills(SkillNormalizationUtil.normalizeSet(preferredSkills))
-                .minimumExperienceYears(minExp)
-                .requiredEducation(education)
+                .minimumExperienceYears(parsedExp.minYears())
+                .experienceTechnology(parsedExp.technology())
+                .requiredEducationLevel(parsedEdu.level())
+                .requiredEducationField(parsedEdu.field())
+                .requiredEducation(parsedEdu.summary())
                 .location(job.getLocation())
                 .remoteType(job.getRemoteType())
                 .build();
     }
 
     private void extractSkillsFromText(String text, Set<String> targetSet) {
+        if (text == null || text.isBlank()) return;
         for (String vocabToken : KNOWN_VOCABULARY) {
             Pattern pattern = Pattern.compile("\\b" + Pattern.quote(vocabToken) + "\\b", Pattern.CASE_INSENSITIVE);
             if (pattern.matcher(text).find()) {
@@ -80,28 +96,73 @@ public class JobRequirementExtractor {
         }
     }
 
-    private Integer extractMinimumExperience(String text) {
-        Matcher matcher = EXPERIENCE_PATTERN.matcher(text);
+    private record ParsedExperience(Integer minYears, String technology) {}
+
+    private ParsedExperience extractExperienceDetails(String text) {
+        Matcher matcher = EXP_TECH_PATTERN.matcher(text);
         if (matcher.find()) {
             try {
-                return Integer.parseInt(matcher.group(1));
+                int years = Integer.parseInt(matcher.group(1));
+                String rawTech = matcher.group(2);
+                String normalizedTech = null;
+
+                if (rawTech != null && !rawTech.isBlank()) {
+                    String cleanTech = rawTech.trim().toLowerCase(Locale.ROOT);
+                    if (!NON_TECH_EXP_WORDS.contains(cleanTech)) {
+                        normalizedTech = SkillNormalizationUtil.normalize(cleanTech);
+                    }
+                }
+
+                return new ParsedExperience(years, normalizedTech);
             } catch (NumberFormatException ignored) {
             }
         }
-        return null;
+        return new ParsedExperience(null, null);
     }
 
-    private String extractEducationRequirement(String text) {
+    private record ParsedEducation(DegreeLevel level, String field, String summary) {}
+
+    private ParsedEducation extractEducationDetails(String text) {
+        DegreeLevel level = null;
+        String summary = null;
+
         if (text.contains("phd") || text.contains("doctorate")) {
-            return "PhD";
+            level = DegreeLevel.DOCTORATE;
+            summary = "PhD";
+        } else if (text.contains("master") || text.contains("m.s.") || text.contains("m.tech")) {
+            level = DegreeLevel.MASTER;
+            summary = "Master";
+        } else if (text.contains("bachelor") || text.contains("b.s.") || text.contains("b.tech") || text.contains("b.e.") || text.contains("degree")) {
+            level = DegreeLevel.BACHELOR;
+            summary = "Bachelor";
+        } else if (text.contains("associate")) {
+            level = DegreeLevel.ASSOCIATE;
+            summary = "Associate";
+        } else if (text.contains("high school") || text.contains("diploma")) {
+            level = DegreeLevel.HIGH_SCHOOL;
+            summary = "High School";
         }
-        if (text.contains("master") || text.contains("m.s.") || text.contains("m.tech")) {
-            return "Master";
+
+        String field = null;
+        if (text.contains("computer science") || text.contains("cs")) {
+            field = "computer science";
+        } else if (text.contains("information technology") || text.contains("it")) {
+            field = "information technology";
+        } else if (text.contains("software engineering")) {
+            field = "software engineering";
+        } else if (text.contains("electrical engineering")) {
+            field = "electrical engineering";
+        } else if (text.contains("mechanical engineering")) {
+            field = "mechanical engineering";
+        } else if (text.contains("engineering")) {
+            field = "engineering";
         }
-        if (text.contains("bachelor") || text.contains("b.s.") || text.contains("b.tech") || text.contains("b.e.") || text.contains("degree")) {
-            return "Bachelor";
+
+        if (level != null && field != null && summary != null) {
+            summary = summary + " in " + capitalize(field);
         }
-        return null;
+
+        return new ParsedEducation(level, field, summary);
     }
 
     private int indexOfAny(String text, String... keywords) {
@@ -113,6 +174,11 @@ public class JobRequirementExtractor {
             }
         }
         return minPos;
+    }
+
+    private String capitalize(String str) {
+        if (str == null || str.isEmpty()) return str;
+        return str.substring(0, 1).toUpperCase() + str.substring(1);
     }
 
 }
