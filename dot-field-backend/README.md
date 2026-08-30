@@ -4,6 +4,7 @@
 > Phase 1 establishes the backend foundation using Spring Boot and PostgreSQL.
 > Phase 2 implements the Candidate Profile subsystem.
 > Phase 3 implements the Job Management subsystem.
+> Phase 4 implements the Job Extraction & Ingestion subsystem.
 
 ---
 
@@ -106,7 +107,8 @@ dot-field-backend/
 ├── src/main/java/com/dotfield/
 │   ├── DotFieldApplication.java    # Spring Boot entry point
 │   ├── controller/                 # REST controllers (thin — delegate to services)
-│   ├── service/                    # Business logic layer
+│   ├── service/                    # Business logic & extraction services
+│   ├── extractor/                  # JobExtractor Strategy, Normalization & DTOs
 │   ├── repository/                 # Spring Data JPA repositories & specifications
 │   ├── entity/                     # JPA entities & enums (database models)
 │   ├── dto/                        # Data Transfer Objects & PagedResponse wrapper
@@ -124,13 +126,14 @@ dot-field-backend/
 ### Architecture
 
 ```
-Controller → Service → Repository / Specification → PostgreSQL
+Controller → Extraction/Business Service → Extractor Registry / Repository → PostgreSQL
 ```
 
 - **Controllers** are thin — they validate input and delegate to services.
-- **Services** contain all business logic, transaction boundaries, and salary validations.
+- **Extraction Services** orchestrate extraction strategy lookup, field normalization, validation, and persistence.
+- **Extractor Strategy** decouples job sources (`COMPANY_WEBSITE`) from input formats (`Map<String, Object>`).
 - **Repositories & Specifications** handle dynamic query filtering and pagination.
-- **DTOs** are used at API boundaries; JPA entities are never exposed directly.
+- **DTOs** isolate raw external data (`ExtractJobRequest`, `ExtractedJob`) from the internal domain model (`Job`).
 
 ---
 
@@ -144,74 +147,6 @@ Controller → Service → Repository / Specification → PostgreSQL
 |--------|----------|-------------|
 | `GET`  | `/api/profile` | Retrieve the complete candidate profile |
 | `PUT`  | `/api/profile` | Create or update candidate profile basic details |
-
-#### Update Profile Request Example (`PUT /api/profile`)
-
-```json
-{
-  "name": "Jane Doe",
-  "email": "jane.doe@example.com",
-  "phone": "+1234567890",
-  "location": "San Francisco, CA",
-  "linkedinUrl": "https://linkedin.com/in/janedoe",
-  "githubUrl": "https://github.com/janedoe",
-  "portfolioUrl": "https://janedoe.dev"
-}
-```
-
----
-
-### Skills Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET`  | `/api/profile/skills` | List candidate skills |
-| `POST` | `/api/profile/skills` | Add a new skill to candidate profile |
-| `DELETE` | `/api/profile/skills/{id}` | Delete a skill |
-
-#### Add Skill Request Example (`POST /api/profile/skills`)
-
-```json
-{
-  "name": "Java",
-  "category": "LANGUAGE"
-}
-```
-
-Categories: `LANGUAGE`, `FRONTEND`, `BACKEND`, `DATABASE`, `TOOL`, `FRAMEWORK`, `OTHER`
-
----
-
-### Education Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET`  | `/api/profile/education` | List education records |
-| `POST` | `/api/profile/education` | Add education record |
-| `PUT`  | `/api/profile/education/{id}` | Update education record |
-| `DELETE` | `/api/profile/education/{id}` | Delete education record |
-
----
-
-### Project Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET`  | `/api/profile/projects` | List candidate projects |
-| `POST` | `/api/profile/projects` | Add project record |
-| `PUT`  | `/api/profile/projects/{id}` | Update project record |
-| `DELETE` | `/api/profile/projects/{id}` | Delete project record |
-
----
-
-### Experience Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET`  | `/api/profile/experience` | List candidate work experience |
-| `POST` | `/api/profile/experience` | Add experience record |
-| `PUT`  | `/api/profile/experience/{id}` | Update experience record |
-| `DELETE` | `/api/profile/experience/{id}` | Delete experience record |
 
 ---
 
@@ -232,88 +167,74 @@ Categories: `LANGUAGE`, `FRONTEND`, `BACKEND`, `DATABASE`, `TOOL`, `FRAMEWORK`, 
 
 ---
 
-### Query Parameters for `GET /api/jobs`
+## API Documentation — Phase 4 Job Extraction & Ingestion
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `page` | `int` | `0` | Zero-indexed page number |
-| `size` | `int` | `20` | Page size |
-| `status` | `JobStatus` | `null` | Exact status match (`SAVED`, `APPLIED`, `REJECTED`, `INTERVIEW`, `OFFER`, `ARCHIVED`) |
-| `company` | `String` | `null` | Partial, case-insensitive company name search |
-| `source` | `String` | `null` | Exact case-insensitive source match (e.g. `LINKEDIN`, `MANUAL`) |
-| `remoteType` | `RemoteType` | `null` | Exact remote type match (`ONSITE`, `HYBRID`, `REMOTE`, `OTHER`) |
-| `employmentType` | `EmploymentType` | `null` | Exact employment type match (`FULL_TIME`, `PART_TIME`, `CONTRACT`, `INTERNSHIP`, `TEMPORARY`, `OTHER`) |
+### Base Path: `/api`
 
-#### Example Paginated & Filtered Query
+### Extraction Endpoints
 
-```http
-GET /api/jobs?page=0&size=20&status=SAVED&company=google&remoteType=REMOTE
-```
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/jobs/extract` | Extract and ingest raw job listing data into Job domain model |
 
 ---
 
-### Request & Response Examples
+### Ingestion Details & Extractor Support
 
-#### Create Job Request (`POST /api/jobs`)
+- **Job Source vs. Input Format:** `source` (e.g. `"COMPANY_WEBSITE"`) represents listing origin. Raw data payload `rawData` is transmitted in JSON key-value structure (`Map<String, Object>`).
+- **Supported Sources:** Currently supported source adapter is `"COMPANY_WEBSITE"` (`CompanyWebsiteJobExtractor`).
+- **Unsupported Source Behavior:** Requests containing unsupported sources (e.g. `"LINKEDIN"`, `"INDEED"`) immediately return `400 Bad Request` with message `"Unsupported job source: LINKEDIN"`.
+- **Normalization:**
+  - **Text:** Trims surrounding whitespace and converts blank strings to `null`.
+  - **Source:** Converts source strings to uppercase (`"COMPANY_WEBSITE"`).
+  - **Employment Type:** Maps `"full time"`, `"part time"`, `"contract"`, `"internship"`, `"temporary"` to `EmploymentType` enums (defaults to `OTHER`).
+  - **Remote Type:** Maps `"remote"`, `"hybrid"`, `"onsite"` to `RemoteType` enums (defaults to `OTHER`).
+  - **Salary:** Conservatively parses ranges (e.g. `"$120,000 - $150,000"`, `"₹10,00,000 - ₹15,00,000"`); returns `null` for unparseable/vague text (`"Competitive salary"`).
+  - **Date:** Parses ISO strings (`"YYYY-MM-DD"`); relative strings (`"Posted 2 days ago"`) return `null`.
+- **Duplicate Policy:** If a job with matching `(source, jobUrl)` already exists, a warning is logged and ingestion continues cleanly without overwriting or deleting existing records.
+
+#### Extract Job Request Example (`POST /api/jobs/extract`)
 
 ```json
 {
-  "title": "Software Engineer",
-  "company": "Google",
-  "location": "Mountain View, CA",
-  "description": "Backend platform engineering",
-  "jobUrl": "https://careers.google.com/jobs/123",
-  "source": "LINKEDIN",
-  "employmentType": "FULL_TIME",
-  "remoteType": "HYBRID",
-  "status": "SAVED",
-  "salaryMin": 140000.00,
-  "salaryMax": 190000.00,
-  "currency": "USD",
-  "postedDate": "2026-08-15"
+  "source": "COMPANY_WEBSITE",
+  "rawData": {
+    "title": "Backend Engineer",
+    "company": "Example Corp",
+    "location": "Bangalore, India",
+    "description": "Building Java 21 microservices platform",
+    "jobUrl": "https://example.com/jobs/123",
+    "employmentType": "Full Time",
+    "remoteType": "Remote",
+    "salary": "$120,000 - $150,000",
+    "postedDate": "2026-08-01"
+  }
 }
 ```
 
-#### Successful Paginated Response (`GET /api/jobs?page=0&size=20`)
+#### Successful Ingestion Response
 
 ```json
 {
   "data": {
-    "content": [
-      {
-        "id": 1,
-        "title": "Software Engineer",
-        "company": "Google",
-        "location": "Mountain View, CA",
-        "description": "Backend platform engineering",
-        "jobUrl": "https://careers.google.com/jobs/123",
-        "source": "LINKEDIN",
-        "employmentType": "FULL_TIME",
-        "remoteType": "HYBRID",
-        "status": "SAVED",
-        "salaryMin": 140000.00,
-        "salaryMax": 190000.00,
-        "currency": "USD",
-        "postedDate": "2026-08-15",
-        "createdAt": "2026-08-30T12:00:00",
-        "updatedAt": "2026-08-30T12:00:00"
-      }
-    ],
-    "page": 0,
-    "size": 20,
-    "totalElements": 1,
-    "totalPages": 1,
-    "last": true
+    "id": 1,
+    "title": "Backend Engineer",
+    "company": "Example Corp",
+    "location": "Bangalore, India",
+    "description": "Building Java 21 microservices platform",
+    "jobUrl": "https://example.com/jobs/123",
+    "source": "COMPANY_WEBSITE",
+    "employmentType": "FULL_TIME",
+    "remoteType": "REMOTE",
+    "status": "SAVED",
+    "salaryMin": 120000.00,
+    "salaryMax": 150000.00,
+    "currency": "USD",
+    "postedDate": "2026-08-01",
+    "createdAt": "2026-08-30T12:44:00",
+    "updatedAt": "2026-08-30T12:44:00"
   },
-  "message": "Jobs retrieved successfully"
-}
-```
-
-#### Update Status Request (`PATCH /api/jobs/1/status`)
-
-```json
-{
-  "status": "APPLIED"
+  "message": "Job opportunity extracted and ingested successfully"
 }
 ```
 
@@ -340,17 +261,13 @@ GET /api/jobs?page=0&size=20&status=SAVED&company=google&remoteType=REMOTE
 }
 ```
 
-### Validation Error
+### Validation / Extraction Error
 
 ```json
 {
   "status": 400,
-  "message": "Validation failed",
-  "timestamp": "2026-08-30T12:00:00",
-  "errors": {
-    "title": "Job title is required",
-    "company": "Company name is required"
-  }
+  "message": "Unsupported job source: LINKEDIN",
+  "timestamp": "2026-08-30T12:00:00"
 }
 ```
 
@@ -359,24 +276,24 @@ GET /api/jobs?page=0&size=20&status=SAVED&company=google&remoteType=REMOTE
 ## Current Phase
 
 ```
-Phase 3 — Job Management
+Phase 4 — Job Extraction & Ingestion
 Status: Complete
 ```
 
-### What's included in Phase 3
+### What's included in Phase 4
 
-- ✅ Job domain model (`Job` JPA entity mapped to `jobs` PostgreSQL table)
-- ✅ `EmploymentType`, `RemoteType`, and `JobStatus` enums with `@Enumerated(EnumType.STRING)`
-- ✅ Extensible string-based `source` representation with `"MANUAL"` default and `"OTHER"` semantic distinction
-- ✅ JPA lifecycle listeners (`@PrePersist`, `@PreUpdate`) for timestamps (`createdAt`, `updatedAt`) and defaults
-- ✅ DTO Isolation Layer (`JobResponse`, `PagedResponse<T>`, `CreateJobRequest`, `UpdateJobRequest`, `UpdateJobStatusRequest`)
-- ✅ Bean Validation for incoming requests and business range validation (`salaryMin <= salaryMax`)
-- ✅ Spring Data JPA `JobRepository` & composable `JobSpecification` dynamic filters
-- ✅ `JobMapper` component for bidirectional DTO ↔ Entity conversion
-- ✅ Transactional `JobService` covering CRUD, status updates, pagination, and error handling
-- ✅ Thin `JobController` REST endpoints under `/api/jobs`
-- ✅ Service unit tests with Mockito (`JobServiceTest`)
-- ✅ Controller integration test suite (`JobControllerTest`) with MockMvc and H2 (45 total passing tests across Phase 1, 2, and 3)
+- ✅ Conceptual separation between Job Source (`source`) and Input Format (`Map<String, Object>`)
+- ✅ `JobExtractor` strategy interface for modular extraction adapters
+- ✅ Extractor Registry using Spring DI (`List<JobExtractor> extractors`)
+- ✅ `CompanyWebsiteJobExtractor` component supporting `"COMPANY_WEBSITE"` raw JSON inputs
+- ✅ HTTP 400 Bad Request error handling for unsupported sources (`"Unsupported job source: LINKEDIN"`)
+- ✅ `ExtractedJob` intermediate normalized DTO isolating external data from JPA entities
+- ✅ Centralized `JobNormalizationUtil` for text trimming, source upper-casing, employment type, remote type, conservative salary parsing, and ISO date parsing
+- ✅ `JobExtractionService` orchestrating extraction, validation (`title`, `company`, `source`), salary range validation (`salaryMin <= salaryMax`), duplicate warning logging, mapping, and persistence
+- ✅ `POST /api/jobs/extract` REST endpoint in `JobController`
+- ✅ Reused Phase 3 `Job` entity, `JobRepository`, `JobMapper`, `ApiResponse`, and `GlobalExceptionHandler`
+- ✅ Comprehensive unit and integration test suite (`JobNormalizationUtilTest`, `CompanyWebsiteJobExtractorTest`, `JobExtractionServiceTest`, `JobExtractionControllerTest`)
+- ✅ 74 total passing automated tests across Phase 1, 2, 3, and 4
 
 ---
 
@@ -387,8 +304,8 @@ Status: Complete
 | 1     | Backend Foundation        | ✅ Complete  |
 | 2     | Candidate Profile         | ✅ Complete  |
 | 3     | Job Management            | ✅ Complete  |
-| 4     | Job Extraction            | ⏳ Next      |
-| 5     | Job Analysis & Matching   | ⏳           |
+| 4     | Job Extraction & Ingestion| ✅ Complete  |
+| 5     | Job Analysis & Matching   | ⏳ Next      |
 | 6     | Resume Tailoring          | ⏳           |
 
 ---

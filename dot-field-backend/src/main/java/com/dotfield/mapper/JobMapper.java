@@ -5,6 +5,7 @@ import com.dotfield.dto.JobResponse;
 import com.dotfield.dto.UpdateJobRequest;
 import com.dotfield.entity.Job;
 import com.dotfield.entity.JobStatus;
+import com.dotfield.extractor.ExtractedJob;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -95,6 +96,35 @@ public class JobMapper {
         job.setSalaryMax(request.getSalaryMax());
         job.setCurrency(request.getCurrency() != null ? request.getCurrency().trim() : null);
         job.setPostedDate(request.getPostedDate());
+    }
+
+    public Job toEntity(ExtractedJob extractedJob) {
+        if (extractedJob == null) {
+            return null;
+        }
+
+        String source = extractedJob.getSource();
+        if (source == null || source.trim().isEmpty()) {
+            source = "OTHER";
+        } else {
+            source = source.trim().toUpperCase();
+        }
+
+        return Job.builder()
+                .title(extractedJob.getTitle() != null ? extractedJob.getTitle().trim() : null)
+                .company(extractedJob.getCompany() != null ? extractedJob.getCompany().trim() : null)
+                .location(extractedJob.getLocation() != null ? extractedJob.getLocation().trim() : null)
+                .description(extractedJob.getDescription())
+                .jobUrl(extractedJob.getJobUrl() != null ? extractedJob.getJobUrl().trim() : null)
+                .source(source)
+                .employmentType(extractedJob.getEmploymentType())
+                .remoteType(extractedJob.getRemoteType())
+                .status(JobStatus.SAVED)
+                .salaryMin(extractedJob.getSalaryMin())
+                .salaryMax(extractedJob.getSalaryMax())
+                .currency(extractedJob.getCurrency() != null ? extractedJob.getCurrency().trim() : null)
+                .postedDate(extractedJob.getPostedDate())
+                .build();
     }
 
 }

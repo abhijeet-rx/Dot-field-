@@ -4,6 +4,7 @@ import com.dotfield.dto.*;
 import com.dotfield.entity.EmploymentType;
 import com.dotfield.entity.JobStatus;
 import com.dotfield.entity.RemoteType;
+import com.dotfield.service.JobExtractionService;
 import com.dotfield.service.JobService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,12 +21,20 @@ import org.springframework.web.bind.annotation.*;
 public class JobController {
 
     private final JobService jobService;
+    private final JobExtractionService jobExtractionService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<JobResponse>> createJob(@Valid @RequestBody CreateJobRequest request) {
         JobResponse job = jobService.createJob(request);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(job, "Job opportunity created successfully"));
+    }
+
+    @PostMapping("/extract")
+    public ResponseEntity<ApiResponse<JobResponse>> extractJob(@Valid @RequestBody ExtractJobRequest request) {
+        JobResponse job = jobExtractionService.extractAndIngest(request);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(job, "Job opportunity extracted and ingested successfully"));
     }
 
     @GetMapping
