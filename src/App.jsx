@@ -1,5 +1,9 @@
 import { useState } from 'react';
+import { Routes, Route, Link } from 'react-router-dom';
 import DotField from './components/DotField';
+import Navbar from './components/Navbar';
+import Dashboard from './pages/Dashboard';
+import JobIntelligence from './pages/JobIntelligence';
 import './index.css';
 
 const THEMES = [
@@ -33,7 +37,8 @@ const THEMES = [
   }
 ];
 
-export default function App() {
+/* ─── Landing Page ────────────────────────────────────────── */
+function LandingPage() {
   const [themeIndex, setThemeIndex] = useState(0);
   const [dotRadius, setDotRadius] = useState(1.5);
   const [dotSpacing, setDotSpacing] = useState(14);
@@ -46,11 +51,8 @@ export default function App() {
   const currentTheme = THEMES[themeIndex];
 
   return (
-    <div className="app-viewport">
-      {/* Background Noise Texture */}
-      <div className="noise-overlay" />
-
-      {/* React Bits Full-Screen DotField Background */}
+    <>
+      {/* Full-Screen DotField Background */}
       <DotField
         dotRadius={dotRadius}
         dotSpacing={dotSpacing}
@@ -64,73 +66,50 @@ export default function App() {
         glowColor={currentTheme.glowColor}
       />
 
-      {/* Navbar Header */}
-      <header className="navbar">
-        <div className="brand-logo">
-          <div className="brand-dot" />
-          <span>DotField</span>
-        </div>
-        <nav className="nav-links">
-          <a href="#features" className="nav-link">Features</a>
-          <a href="#controls" className="nav-link">Controls</a>
-          <a
-            href="https://github.com/abhijeet-rx/Dot-field-"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn-github"
-          >
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
-            </svg>
-            <span>GitHub</span>
-          </a>
-        </nav>
-      </header>
-
       {/* Main Landing Showcase Content */}
       <main className="main-content">
         {/* Left Hero Column */}
         <section className="hero-section">
           <div className="hero-badge">
-            <span>✨ Interactive Canvas Engine</span>
+            <span>✨ Job Intelligence Platform</span>
           </div>
 
           <h1 className="hero-title">
-            Dynamic Particle <br />
-            <span className="title-accent">Dot Field Background</span>
+            Your Career <br />
+            <span className="title-accent">Intelligence Hub</span>
           </h1>
 
           <p className="hero-desc">
-            A high-performance reactive particle dot field background built with WebGL physics, cursor bulge distortion, speed velocity tracking, and customizable glowing gradients.
+            Discover jobs, analyze your fit, understand requirements, tailor your resume, and make informed career decisions — all powered by DOT Field's intelligent matching engine.
           </p>
 
           <div className="hero-actions">
-            <button className="btn-primary" onClick={() => setSparkle(prev => !prev)}>
-              <span>{sparkle ? 'Disable Sparkle' : 'Enable Sparkle ✨'}</span>
-            </button>
+            <Link to="/dashboard" className="btn-primary">
+              <span>Open Dashboard →</span>
+            </Link>
             <a href="#controls" className="btn-secondary">
-              <span>Customize Params</span>
+              <span>Customize Theme</span>
             </a>
           </div>
 
           {/* Feature Highlights Grid */}
           <div className="feature-grid" id="features">
             <div className="feature-card">
-              <div className="feature-icon">⚡</div>
-              <div className="feature-title">Velocity Response</div>
-              <div className="feature-desc">Dots bulge and distort based on mouse motion speed.</div>
+              <div className="feature-icon">🎯</div>
+              <div className="feature-title">Match Analysis</div>
+              <div className="feature-desc">See exactly how your profile matches each job with detailed scoring.</div>
             </div>
 
             <div className="feature-card">
-              <div className="feature-icon">🎨</div>
-              <div className="feature-title">Gradient Shader</div>
-              <div className="feature-desc">Smooth linear particle gradients with SVG radial cursor aura.</div>
+              <div className="feature-icon">📝</div>
+              <div className="feature-title">Resume Tailoring</div>
+              <div className="feature-desc">Generate job-specific resumes from your real profile data — zero fabrication.</div>
             </div>
 
             <div className="feature-card">
-              <div className="feature-icon">🌊</div>
-              <div className="feature-title">Wave Displacement</div>
-              <div className="feature-desc">Optional procedural sine wave physics for ambient motion.</div>
+              <div className="feature-icon">🔍</div>
+              <div className="feature-title">Skill Insights</div>
+              <div className="feature-desc">Understand which skills match, which are missing, and where to grow.</div>
             </div>
           </div>
         </section>
@@ -138,7 +117,7 @@ export default function App() {
         {/* Right Live Controls Panel Column */}
         <aside className="control-panel" id="controls">
           <div className="panel-header">
-            <h2 className="panel-title">Live Parameters</h2>
+            <h2 className="panel-title">Theme Controls</h2>
             <div className="preset-selector" title="Color Theme Presets">
               {THEMES.map((t, i) => (
                 <div
@@ -252,21 +231,28 @@ export default function App() {
               <div className="toggle-knob" />
             </div>
           </div>
-
-          {/* Code Snippet Box */}
-          <div className="code-box">
-            <code>
-              {`<DotField
-  dotRadius={${dotRadius}}
-  dotSpacing={${dotSpacing}}
-  bulgeStrength={${bulgeStrength}}
-  sparkle={${sparkle}}
-  waveAmplitude={${waveAmplitude}}
-/>`}
-            </code>
-          </div>
         </aside>
       </main>
+    </>
+  );
+}
+
+/* ─── App Root ────────────────────────────────────────────── */
+export default function App() {
+  return (
+    <div className="app-viewport">
+      {/* Background Noise Texture */}
+      <div className="noise-overlay" />
+
+      {/* Shared Navbar */}
+      <Navbar />
+
+      {/* Routes */}
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/dashboard/:id" element={<JobIntelligence />} />
+      </Routes>
     </div>
   );
 }

@@ -379,28 +379,64 @@ Background scheduling infrastructure exists (`JobDiscoveryScheduler`) but is **i
 ## Current Phase
 
 ```
-Phase 7 — Job Discovery & Aggregation
+Phase 8 — Job Intelligence Dashboard
 Status: Complete
 ```
 
-### What's included in Phase 7
+### What's included in Phase 8
 
-- ✅ Pluggable `JobSource` strategy & `JobSourceRegistry`
-- ✅ `CompanyCareerPageSource` V1 simulated adapter for development and testing (`COMPANY_WEBSITE`)
-- ✅ Refactored shared Phase 4 `JobExtractionPipeline` for zero normalization code duplication
-- ✅ `Job.java` entity enhancements: `externalId`, `canonicalUrl`, `deduplicationFingerprint`, `lastDiscoveredAt`
-- ✅ Database-level unique constraints on `(source, externalId)` and `canonicalUrl` via JPA `@UniqueConstraint`
-- ✅ 3-level deterministic deduplication engine (`JobDeduplicationService`): Level 1 (External ID) → Level 2 (Canonical URL) → Level 3 (SHA-256 Fingerprint)
-- ✅ Conservative URL canonicalization (stripping tracking params, preserving functional params, keeping `http`/`https` distinct)
-- ✅ Fingerprint safety: no weak fingerprint generated when company/title/location is missing
-- ✅ Concurrent duplicate protection via `REQUIRES_NEW` transactional boundary with `DataIntegrityViolationException` re-fetch
-- ✅ Explicit discovery statistics (newJobs, updatedJobs, unchangedJobs, duplicates, failed) — failures never counted as duplicates
-- ✅ Strict candidate application status preservation (`APPLIED`, `INTERVIEW`, `OFFER`, `REJECTED`, etc. preserved on external refresh)
-- ✅ 100% idempotent repeated discovery execution (verified by integration tests)
-- ✅ Fail-safe source handling without accidental job deletion or expiration
-- ✅ Configurable background scheduler infrastructure (disabled by default, deferred for future activation)
-- ✅ REST API controller (`JobDiscoveryController`) exposing `POST /api/jobs/discover`
-- ✅ Comprehensive unit & integration tests including H2 persistence-level idempotency, concurrency, and status preservation tests
+- ✅ **Job Intelligence Dashboard** — user-facing React frontend for browsing and analyzing job opportunities
+- ✅ **Job List View** — paginated grid of discovered jobs with glassmorphism cards
+- ✅ **Filtering** — company, status, remote type, employment type, source filters with collapsible panel
+- ✅ **Job Intelligence Page** — single-job detail view with complete analysis
+- ✅ **Match Score Display** — SVG circular progress ring, color-coded by match category, with skill/experience/education/location dimension bars
+- ✅ **Skills & Requirements** — matched required/preferred skills, missing required/preferred skills (using Phase 5 backend matching)
+- ✅ **Strengths & Gaps** — backend-provided explainability (no frontend-side matching logic)
+- ✅ **Detailed Analysis** — experience, education, and location analysis text from the matching engine
+- ✅ **Resume Tailoring** — on-demand tailored resume generation via Phase 6 backend with anti-fabrication guarantee
+- ✅ **Tailoring Analysis** — matched keywords, unused job keywords, emphasized entries, tailoring notes
+- ✅ **Manual-Only Application** — "Apply Manually ↗" opens original job URL in new tab; **no auto-apply, no form submission, no credential collection**
+- ✅ **Loading States** — skeleton cards on job list, spinner on intelligence page, inline loading for match and resume
+- ✅ **Empty States** — "No jobs found" with filter-aware messaging
+- ✅ **Error States** — user-facing error messages without stack traces
+- ✅ **Performance** — match scores loaded on-demand per job (no N+1 batch requests on job list)
+- ✅ **Landing Page Preserved** — existing DotField particle animation landing page at `/` with updated hero text
+- ✅ **Smooth Visual Flow** — dashboard shares the same dark glassmorphism aesthetic, fonts, color palette, and animations as the landing page
+- ✅ **CORS Configuration** — `CorsConfig.java` allows Vite dev server (`localhost:5173`) to call backend API
+- ✅ **Backend Tests** — CORS configuration integration tests (207 total tests, 0 failures)
+- ✅ **Frontend Build** — Vite production build passes with 0 errors
+
+### What Phase 8 does NOT include
+
+- ❌ No automatic job applications
+- ❌ No bulk application submission
+- ❌ No CAPTCHA bypass or bot detection bypass
+- ❌ No credential harvesting
+- ❌ No automated application form submission
+- ❌ No WhatsApp or email notifications
+- ❌ No automated recruiter communication
+- ❌ No application tracking (future phase)
+
+### Frontend Development
+
+```bash
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+# → http://localhost:5173
+
+# Build for production
+npm run build
+```
+
+Routes:
+- `/` — Landing page (DotField particle animation + product hero)
+- `/dashboard` — Job list (browse, filter, sort)
+- `/dashboard/:id` — Job intelligence page (details + match + tailor + apply)
+
+The frontend connects to the backend at `http://localhost:8080/api` via CORS.
 
 ---
 
@@ -415,6 +451,7 @@ Status: Complete
 | 5     | Job Analysis & Matching   | ✅ Complete  |
 | 6     | Resume Tailoring          | ✅ Complete  |
 | 7     | Job Discovery & Aggregation| ✅ Complete |
+| 8     | Job Intelligence Dashboard | ✅ Complete |
 
 ---
 
