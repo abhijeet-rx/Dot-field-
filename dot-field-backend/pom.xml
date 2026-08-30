@@ -61,11 +61,10 @@
             <scope>test</scope>
         </dependency>
 
-        <!-- H2 Database (test only — avoids requiring PostgreSQL for unit tests) -->
+        <!-- H2 Database (allows running locally without external PostgreSQL) -->
         <dependency>
             <groupId>com.h2database</groupId>
             <artifactId>h2</artifactId>
-            <scope>test</scope>
         </dependency>
     </dependencies>
 

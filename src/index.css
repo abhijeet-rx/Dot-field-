@@ -172,8 +172,9 @@ html, body {
 
 /* ─── Landing Page ─────────────────────────────────────────── */
 .main-content {
-  display: grid;
-  grid-template-columns: 1fr 380px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   gap: 3rem;
   padding: 3rem;
   max-width: 1440px;
@@ -187,6 +188,7 @@ html, body {
   flex-direction: column;
   justify-content: center;
   gap: 2rem;
+  max-width: 900px;
 }
 
 .hero-badge {
