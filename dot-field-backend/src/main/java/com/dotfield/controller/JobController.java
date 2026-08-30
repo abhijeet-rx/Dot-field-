@@ -5,6 +5,7 @@ import com.dotfield.entity.EmploymentType;
 import com.dotfield.entity.JobStatus;
 import com.dotfield.entity.RemoteType;
 import com.dotfield.service.JobExtractionService;
+import com.dotfield.service.JobMatchingService;
 import com.dotfield.service.JobService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ public class JobController {
 
     private final JobService jobService;
     private final JobExtractionService jobExtractionService;
+    private final JobMatchingService jobMatchingService;
 
     @PostMapping
     public ResponseEntity<ApiResponse<JobResponse>> createJob(@Valid @RequestBody CreateJobRequest request) {
@@ -56,6 +58,12 @@ public class JobController {
     public ResponseEntity<ApiResponse<JobResponse>> getJobById(@PathVariable Long id) {
         JobResponse job = jobService.getJobById(id);
         return ResponseEntity.ok(ApiResponse.success(job, "Job retrieved successfully"));
+    }
+
+    @GetMapping("/{id}/match")
+    public ResponseEntity<ApiResponse<JobMatchResponse>> getJobMatch(@PathVariable Long id) {
+        JobMatchResponse matchResponse = jobMatchingService.analyzeJob(id);
+        return ResponseEntity.ok(ApiResponse.success(matchResponse, "Job match analysis completed successfully"));
     }
 
     @PutMapping("/{id}")

@@ -5,6 +5,7 @@
 > Phase 2 implements the Candidate Profile subsystem.
 > Phase 3 implements the Job Management subsystem.
 > Phase 4 implements the Job Extraction & Ingestion subsystem.
+> Phase 5 implements the Job Analysis & Matching subsystem.
 
 ---
 
@@ -107,8 +108,9 @@ dot-field-backend/
 ├── src/main/java/com/dotfield/
 │   ├── DotFieldApplication.java    # Spring Boot entry point
 │   ├── controller/                 # REST controllers (thin — delegate to services)
-│   ├── service/                    # Business logic & extraction services
+│   ├── service/                    # Business, extraction & matching services
 │   ├── extractor/                  # JobExtractor Strategy, Normalization & DTOs
+│   ├── matching/                   # Matching Engine: Normalization, Extractors, Matchers & Calculators
 │   ├── repository/                 # Spring Data JPA repositories & specifications
 │   ├── entity/                     # JPA entities & enums (database models)
 │   ├── dto/                        # Data Transfer Objects & PagedResponse wrapper
@@ -122,18 +124,6 @@ dot-field-backend/
 ├── .env.example                    # Environment variable template
 └── .gitignore
 ```
-
-### Architecture
-
-```
-Controller → Extraction/Business Service → Extractor Registry / Repository → PostgreSQL
-```
-
-- **Controllers** are thin — they validate input and delegate to services.
-- **Extraction Services** orchestrate extraction strategy lookup, field normalization, validation, and persistence.
-- **Extractor Strategy** decouples job sources (`COMPANY_WEBSITE`) from input formats (`Map<String, Object>`).
-- **Repositories & Specifications** handle dynamic query filtering and pagination.
-- **DTOs** isolate raw external data (`ExtractJobRequest`, `ExtractedJob`) from the internal domain model (`Job`).
 
 ---
 
@@ -179,62 +169,80 @@ Controller → Extraction/Business Service → Extractor Registry / Repository �
 
 ---
 
-### Ingestion Details & Extractor Support
+## API Documentation — Phase 5 Job Analysis & Matching
 
-- **Job Source vs. Input Format:** `source` (e.g. `"COMPANY_WEBSITE"`) represents listing origin. Raw data payload `rawData` is transmitted in JSON key-value structure (`Map<String, Object>`).
-- **Supported Sources:** Currently supported source adapter is `"COMPANY_WEBSITE"` (`CompanyWebsiteJobExtractor`).
-- **Unsupported Source Behavior:** Requests containing unsupported sources (e.g. `"LINKEDIN"`, `"INDEED"`) immediately return `400 Bad Request` with message `"Unsupported job source: LINKEDIN"`.
-- **Normalization:**
-  - **Text:** Trims surrounding whitespace and converts blank strings to `null`.
-  - **Source:** Converts source strings to uppercase (`"COMPANY_WEBSITE"`).
-  - **Employment Type:** Maps `"full time"`, `"part time"`, `"contract"`, `"internship"`, `"temporary"` to `EmploymentType` enums (defaults to `OTHER`).
-  - **Remote Type:** Maps `"remote"`, `"hybrid"`, `"onsite"` to `RemoteType` enums (defaults to `OTHER`).
-  - **Salary:** Conservatively parses ranges (e.g. `"$120,000 - $150,000"`, `"₹10,00,000 - ₹15,00,000"`); returns `null` for unparseable/vague text (`"Competitive salary"`).
-  - **Date:** Parses ISO strings (`"YYYY-MM-DD"`); relative strings (`"Posted 2 days ago"`) return `null`.
-- **Duplicate Policy:** If a job with matching `(source, jobUrl)` already exists, a warning is logged and ingestion continues cleanly without overwriting or deleting existing records.
+### Base Path: `/api`
 
-#### Extract Job Request Example (`POST /api/jobs/extract`)
+### Matching Endpoints
 
-```json
-{
-  "source": "COMPANY_WEBSITE",
-  "rawData": {
-    "title": "Backend Engineer",
-    "company": "Example Corp",
-    "location": "Bangalore, India",
-    "description": "Building Java 21 microservices platform",
-    "jobUrl": "https://example.com/jobs/123",
-    "employmentType": "Full Time",
-    "remoteType": "Remote",
-    "salary": "$120,000 - $150,000",
-    "postedDate": "2026-08-01"
-  }
-}
-```
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`  | `/api/jobs/{id}/match` | Analyze candidate profile match against job opportunity |
 
-#### Successful Ingestion Response
+---
+
+### Matching Engine Architecture & Rules
+
+- **Deterministic & Explainable:** Matching is 100% deterministic based on heuristic extraction, token normalization, and mathematical scoring. No LLMs or vector databases are used.
+- **Scoring Range:** `0 <= overallScore <= 100` (integer rounded).
+- **Match Categories:**
+  - `80 – 100` → `STRONG_MATCH`
+  - `60 – 79`  → `GOOD_MATCH`
+  - `40 – 59`  → `PARTIAL_MATCH`
+  - `0 – 39`   → `WEAK_MATCH`
+- **Default Dimension Weights:**
+  - Skill Score: **60%**
+  - Experience Score: **20%**
+  - Education Score: **10%**
+  - Location/Remote Score: **10%**
+- **Dynamic Weight Redistribution:**
+  - If a dimension is `UNKNOWN` or `NOT_REQUIRED`, its weight is excluded from the denominator ($S_{\text{available}} = \sum_{d \in \text{Available}} W_d$) and remaining weights are normalized ($W_d^{\text{normalized}} = W_d / S_{\text{available}}$) so candidate scores are not penalized.
+  - If all dimensions are `UNKNOWN`, `overallScore = 0` and `matchCategory = WEAK_MATCH`.
+- **Dynamic On-Demand Calculation:** Match results are generated dynamically on demand and are not stored in the database.
+
+#### Example Match Response (`GET /api/jobs/1/match`)
 
 ```json
 {
   "data": {
-    "id": 1,
-    "title": "Backend Engineer",
-    "company": "Example Corp",
-    "location": "Bangalore, India",
-    "description": "Building Java 21 microservices platform",
-    "jobUrl": "https://example.com/jobs/123",
-    "source": "COMPANY_WEBSITE",
-    "employmentType": "FULL_TIME",
-    "remoteType": "REMOTE",
-    "status": "SAVED",
-    "salaryMin": 120000.00,
-    "salaryMax": 150000.00,
-    "currency": "USD",
-    "postedDate": "2026-08-01",
-    "createdAt": "2026-08-30T12:44:00",
-    "updatedAt": "2026-08-30T12:44:00"
+    "jobId": 1,
+    "profileId": 1,
+    "overallScore": 88,
+    "matchCategory": "STRONG_MATCH",
+    "skillScore": 80,
+    "experienceScore": 100,
+    "educationScore": 100,
+    "locationScore": 100,
+    "matchedRequiredSkills": [
+      "java",
+      "spring boot"
+    ],
+    "missingRequiredSkills": [
+      "postgresql"
+    ],
+    "matchedPreferredSkills": [
+      "docker"
+    ],
+    "missingPreferredSkills": [
+      "kubernetes"
+    ],
+    "experienceAnalysis": "Candidate has 4.0 years of total experience, meeting the required 3 years.",
+    "educationAnalysis": "Candidate holds a degree matching the required Bachelor level.",
+    "locationAnalysis": "Candidate location 'Bangalore, India' matches job location 'Bangalore, India'.",
+    "strengths": [
+      "Matches required skill: Java",
+      "Matches required skill: Spring boot",
+      "Matches preferred skill: Docker",
+      "Candidate has 4.0 years of total experience, meeting the required 3 years.",
+      "Candidate holds a degree matching the required Bachelor level.",
+      "Candidate location 'Bangalore, India' matches job location 'Bangalore, India'."
+    ],
+    "gaps": [
+      "Missing required skill: Postgresql",
+      "Missing preferred skill: Kubernetes"
+    ]
   },
-  "message": "Job opportunity extracted and ingested successfully"
+  "message": "Job match analysis completed successfully"
 }
 ```
 
@@ -261,39 +269,33 @@ Controller → Extraction/Business Service → Extractor Registry / Repository �
 }
 ```
 
-### Validation / Extraction Error
-
-```json
-{
-  "status": 400,
-  "message": "Unsupported job source: LINKEDIN",
-  "timestamp": "2026-08-30T12:00:00"
-}
-```
-
 ---
 
 ## Current Phase
 
 ```
-Phase 4 — Job Extraction & Ingestion
+Phase 5 — Job Analysis & Matching
 Status: Complete
 ```
 
-### What's included in Phase 4
+### What's included in Phase 5
 
-- ✅ Conceptual separation between Job Source (`source`) and Input Format (`Map<String, Object>`)
-- ✅ `JobExtractor` strategy interface for modular extraction adapters
-- ✅ Extractor Registry using Spring DI (`List<JobExtractor> extractors`)
-- ✅ `CompanyWebsiteJobExtractor` component supporting `"COMPANY_WEBSITE"` raw JSON inputs
-- ✅ HTTP 400 Bad Request error handling for unsupported sources (`"Unsupported job source: LINKEDIN"`)
-- ✅ `ExtractedJob` intermediate normalized DTO isolating external data from JPA entities
-- ✅ Centralized `JobNormalizationUtil` for text trimming, source upper-casing, employment type, remote type, conservative salary parsing, and ISO date parsing
-- ✅ `JobExtractionService` orchestrating extraction, validation (`title`, `company`, `source`), salary range validation (`salaryMin <= salaryMax`), duplicate warning logging, mapping, and persistence
-- ✅ `POST /api/jobs/extract` REST endpoint in `JobController`
-- ✅ Reused Phase 3 `Job` entity, `JobRepository`, `JobMapper`, `ApiResponse`, and `GlobalExceptionHandler`
-- ✅ Comprehensive unit and integration test suite (`JobNormalizationUtilTest`, `CompanyWebsiteJobExtractorTest`, `JobExtractionServiceTest`, `JobExtractionControllerTest`)
-- ✅ 74 total passing automated tests across Phase 1, 2, 3, and 4
+- ✅ Reused Phase 2 Candidate `Profile` & Phase 3 `Job` domain entities without modification
+- ✅ Deterministic heuristic requirement extraction (`JobRequirementExtractor`)
+- ✅ Centralized skill normalization with safe alias resolution (`SkillNormalizationUtil`)
+- ✅ Strict non-equivalence checks (`Java` != `JavaScript`, `React` != `React Native`)
+- ✅ Skill matching distinguishing required (70%) vs. preferred (30%) skills (`SkillMatcher`)
+- ✅ Experience duration calculation & minimum years evaluation (`ExperienceMatcher`)
+- ✅ Degree level & field compatibility matching (`EducationMatcher`)
+- ✅ Remote and physical location compatibility matching (`LocationMatcher`)
+- ✅ Mathematical score calculation with dynamic weight redistribution for `UNKNOWN` dimensions (`MatchScoreCalculator`)
+- ✅ `0 <= overallScore <= 100` score bounds and integer rounding
+- ✅ Match category classification (`STRONG_MATCH`, `GOOD_MATCH`, `PARTIAL_MATCH`, `WEAK_MATCH`)
+- ✅ Data-driven explainability builder for strengths and gaps (`MatchExplanationBuilder`)
+- ✅ Dynamic on-demand analysis orchestration service (`JobMatchingService`)
+- ✅ `GET /api/jobs/{id}/match` REST endpoint in `JobController`
+- ✅ Unit & Integration test suite (`SkillNormalizationUtilTest`, `JobRequirementExtractorTest`, `SkillMatcherTest`, `ExperienceMatcherTest`, `EducationMatcherTest`, `LocationMatcherTest`, `MatchScoreCalculatorTest`, `JobMatchingServiceTest`, `JobMatchingControllerTest`)
+- ✅ 101 total passing automated tests across Phase 1, 2, 3, 4, and 5
 
 ---
 
@@ -305,8 +307,8 @@ Status: Complete
 | 2     | Candidate Profile         | ✅ Complete  |
 | 3     | Job Management            | ✅ Complete  |
 | 4     | Job Extraction & Ingestion| ✅ Complete  |
-| 5     | Job Analysis & Matching   | ⏳ Next      |
-| 6     | Resume Tailoring          | ⏳           |
+| 5     | Job Analysis & Matching   | ✅ Complete  |
+| 6     | Resume Tailoring          | ⏳ Next      |
 
 ---
 
