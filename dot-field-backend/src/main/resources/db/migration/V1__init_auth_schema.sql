@@ -1,6 +1,6 @@
 -- ──────────────────────────────────────────────────────────────
 -- DOT Field — Flyway Migration V1: Authentication Schema
--- Compatible with both existing databases (PostgreSQL) and blank databases (H2 dev mode).
+-- Safe for both existing databases (PostgreSQL) and blank databases.
 -- ──────────────────────────────────────────────────────────────
 
 -- 1. Create users table
@@ -30,5 +30,35 @@ CREATE TABLE IF NOT EXISTS profiles (
 -- 3. Add user_id column to profiles table
 ALTER TABLE profiles ADD COLUMN IF NOT EXISTS user_id BIGINT;
 
--- 4. Add UNIQUE index on profiles.user_id
+-- 4. Safety guard: fail if multiple unlinked profiles exist
+--    (prevents silently attaching multiple candidates to a single user)
+DO $$
+DECLARE
+    unlinked_count INTEGER;
+BEGIN
+    SELECT COUNT(*) INTO unlinked_count FROM profiles WHERE user_id IS NULL;
+    IF unlinked_count > 1 THEN
+        RAISE EXCEPTION
+            'MIGRATION ABORTED: Found % existing profiles with no user_id. '
+            'Cannot safely auto-assign ownership. '
+            'Manually assign user_id to each profile before re-running migration.',
+            unlinked_count;
+    END IF;
+END $$;
+
+-- 5. Add Foreign Key constraint on profiles.user_id → users.id
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'fk_profiles_user_id'
+          AND table_name = 'profiles'
+    ) THEN
+        ALTER TABLE profiles
+            ADD CONSTRAINT fk_profiles_user_id
+            FOREIGN KEY (user_id) REFERENCES users(id);
+    END IF;
+END $$;
+
+-- 6. Add UNIQUE index on profiles.user_id (one profile per user)
 CREATE UNIQUE INDEX IF NOT EXISTS uk_profiles_user_id ON profiles(user_id);

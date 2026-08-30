@@ -133,4 +133,60 @@ class JobAuthorizationTest {
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isCreated());
     }
+
+    @Test
+    @DisplayName("USER role gets 403 Forbidden on PUT /api/jobs/{id}")
+    void userForbiddenOnJobUpdate() throws Exception {
+        mockMvc.perform(put("/jobs/" + testJob.getId())
+                        .header("Authorization", "Bearer " + userToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"Updated Title\",\"company\":\"Updated Co\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("USER role gets 403 Forbidden on PATCH /api/jobs/{id}/status")
+    void userForbiddenOnJobStatusPatch() throws Exception {
+        mockMvc.perform(patch("/jobs/" + testJob.getId() + "/status")
+                        .header("Authorization", "Bearer " + userToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"APPLIED\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("USER role gets 403 Forbidden on DELETE /api/jobs/{id}")
+    void userForbiddenOnJobDelete() throws Exception {
+        mockMvc.perform(delete("/jobs/" + testJob.getId())
+                        .header("Authorization", "Bearer " + userToken))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @DisplayName("ADMIN role can update jobs (PUT /api/jobs/{id})")
+    void adminCanUpdateJob() throws Exception {
+        mockMvc.perform(put("/jobs/" + testJob.getId())
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"Updated Title\",\"company\":\"Updated Co\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("ADMIN role can patch job status (PATCH /api/jobs/{id}/status)")
+    void adminCanPatchJobStatus() throws Exception {
+        mockMvc.perform(patch("/jobs/" + testJob.getId() + "/status")
+                        .header("Authorization", "Bearer " + adminToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"INTERVIEW\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("ADMIN role can delete jobs (DELETE /api/jobs/{id})")
+    void adminCanDeleteJob() throws Exception {
+        mockMvc.perform(delete("/jobs/" + testJob.getId())
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk());
+    }
 }

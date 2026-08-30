@@ -66,10 +66,14 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/jobs/extract").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/jobs/discover").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/jobs/*").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/jobs/*/status").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/jobs/*").hasRole("ADMIN")
 
-                        // Authenticated endpoints (USER or ADMIN)
-                        .requestMatchers("/auth/me", "/profile/**", "/jobs/**").authenticated()
+                        // Authenticated endpoints — read-only job access for USER or ADMIN
+                        .requestMatchers(HttpMethod.GET, "/jobs", "/jobs/**").authenticated()
+
+                        // Authenticated endpoints — profile and auth
+                        .requestMatchers("/auth/me", "/profile/**").authenticated()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

@@ -36,13 +36,10 @@ public class JwtService {
         
         byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
         if (keyBytes.length < 32) {
-            // Pad or double key bytes if raw string length is under 256 bits for HMAC-SHA256
-            byte[] padded = new byte[32];
-            System.arraycopy(keyBytes, 0, padded, 0, Math.min(keyBytes.length, 32));
-            for (int i = keyBytes.length; i < 32; i++) {
-                padded[i] = (byte) (i * 31);
-            }
-            keyBytes = padded;
+            throw new IllegalArgumentException(
+                    "jwt.secret must be at least 32 bytes (256 bits) for HMAC-SHA256. " +
+                    "Current length: " + keyBytes.length + " bytes. " +
+                    "Generate a secure key, e.g.: openssl rand -hex 32");
         }
         this.key = Keys.hmacShaKeyFor(keyBytes);
         this.expirationMs = expirationMs;
