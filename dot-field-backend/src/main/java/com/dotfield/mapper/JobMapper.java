@@ -18,11 +18,13 @@ public class JobMapper {
 
         return JobResponse.builder()
                 .id(job.getId())
+                .externalId(job.getExternalId())
                 .title(job.getTitle())
                 .company(job.getCompany())
                 .location(job.getLocation())
                 .description(job.getDescription())
                 .jobUrl(job.getJobUrl())
+                .canonicalUrl(job.getCanonicalUrl())
                 .source(job.getSource())
                 .employmentType(job.getEmploymentType())
                 .remoteType(job.getRemoteType())
@@ -31,6 +33,7 @@ public class JobMapper {
                 .salaryMax(job.getSalaryMax())
                 .currency(job.getCurrency())
                 .postedDate(job.getPostedDate())
+                .lastDiscoveredAt(job.getLastDiscoveredAt())
                 .createdAt(job.getCreatedAt())
                 .updatedAt(job.getUpdatedAt())
                 .build();

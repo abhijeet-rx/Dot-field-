@@ -8,6 +8,7 @@ import com.dotfield.entity.JobStatus;
 import com.dotfield.entity.RemoteType;
 import com.dotfield.exception.BadRequestException;
 import com.dotfield.extractor.CompanyWebsiteJobExtractor;
+import com.dotfield.extractor.JobExtractionPipeline;
 import com.dotfield.extractor.JobExtractor;
 import com.dotfield.mapper.JobMapper;
 import com.dotfield.repository.JobRepository;
@@ -44,8 +45,8 @@ class JobExtractionServiceTest {
     @BeforeEach
     void setUp() {
         JobExtractor companyWebsiteExtractor = new CompanyWebsiteJobExtractor();
-        List<JobExtractor> extractors = List.of(companyWebsiteExtractor);
-        jobExtractionService = new JobExtractionService(extractors, jobRepository, jobMapper);
+        JobExtractionPipeline pipeline = new JobExtractionPipeline(List.of(companyWebsiteExtractor));
+        jobExtractionService = new JobExtractionService(pipeline, jobRepository, jobMapper);
 
         sampleJob = Job.builder()
                 .id(1L)

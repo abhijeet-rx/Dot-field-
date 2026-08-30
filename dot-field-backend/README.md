@@ -6,6 +6,8 @@
 > Phase 3 implements the Job Management subsystem.
 > Phase 4 implements the Job Extraction & Ingestion subsystem.
 > Phase 5 implements the Job Analysis & Matching subsystem.
+> Phase 6 implements the Resume Tailoring subsystem.
+> Phase 7 implements the Job Discovery & Aggregation subsystem.
 
 ---
 
@@ -108,9 +110,12 @@ dot-field-backend/
 ├── src/main/java/com/dotfield/
 │   ├── DotFieldApplication.java    # Spring Boot entry point
 │   ├── controller/                 # REST controllers (thin — delegate to services)
-│   ├── service/                    # Business, extraction & matching services
-│   ├── extractor/                  # JobExtractor Strategy, Normalization & DTOs
+│   ├── service/                    # Business, extraction, matching & discovery services
+│   ├── discovery/                  # Job Discovery: Sources, Registry, Deduplication & Scheduler
+│   │   └── source/                 # Pluggable Source Adapters (e.g. CompanyCareerPageSource)
+│   ├── extractor/                  # JobExtractor Strategy, Shared Pipeline, Normalization & DTOs
 │   ├── matching/                   # Matching Engine: Normalization, Extractors, Matchers & Calculators
+│   ├── tailoring/                  # Tailoring Engine: Keyword Selection, Prioritization & Section Building
 │   ├── repository/                 # Spring Data JPA repositories & specifications
 │   ├── entity/                     # JPA entities & enums (database models)
 │   ├── dto/                        # Data Transfer Objects & PagedResponse wrapper
@@ -181,73 +186,6 @@ dot-field-backend/
 
 ---
 
-### Matching Engine Architecture & Rules
-
-- **Deterministic & Explainable:** Matching is 100% deterministic based on heuristic extraction, token normalization, and mathematical scoring. No LLMs or vector databases are used.
-- **Scoring Range:** `0 <= overallScore <= 100` (integer rounded).
-- **Match Categories:**
-  - `80 – 100` → `STRONG_MATCH`
-  - `60 – 79`  → `GOOD_MATCH`
-  - `40 – 59`  → `PARTIAL_MATCH`
-  - `0 – 39`   → `WEAK_MATCH`
-- **Default Dimension Weights:**
-  - Skill Score: **60%**
-  - Experience Score: **20%**
-  - Education Score: **10%**
-  - Location/Remote Score: **10%**
-- **Dynamic Weight Redistribution:**
-  - If a dimension is `UNKNOWN` or `NOT_REQUIRED`, its weight is excluded from the denominator ($S_{\text{available}} = \sum_{d \in \text{Available}} W_d$) and remaining weights are normalized ($W_d^{\text{normalized}} = W_d / S_{\text{available}}$) so candidate scores are not penalized.
-  - If all dimensions are `UNKNOWN`, `overallScore = 0` and `matchCategory = WEAK_MATCH`.
-- **Dynamic On-Demand Calculation:** Match results are generated dynamically on demand and are not stored in the database.
-
-#### Example Match Response (`GET /api/jobs/1/match`)
-
-```json
-{
-  "data": {
-    "jobId": 1,
-    "profileId": 1,
-    "overallScore": 88,
-    "matchCategory": "STRONG_MATCH",
-    "skillScore": 80,
-    "experienceScore": 100,
-    "educationScore": 100,
-    "locationScore": 100,
-    "matchedRequiredSkills": [
-      "java",
-      "spring boot"
-    ],
-    "missingRequiredSkills": [
-      "postgresql"
-    ],
-    "matchedPreferredSkills": [
-      "docker"
-    ],
-    "missingPreferredSkills": [
-      "kubernetes"
-    ],
-    "experienceAnalysis": "Candidate has 4.0 years of total experience, meeting the required 3 years.",
-    "educationAnalysis": "Candidate holds a degree matching the required Bachelor level.",
-    "locationAnalysis": "Candidate location 'Bangalore, India' matches job location 'Bangalore, India'.",
-    "strengths": [
-      "Matches required skill: Java",
-      "Matches required skill: Spring boot",
-      "Matches preferred skill: Docker",
-      "Candidate has 4.0 years of total experience, meeting the required 3 years.",
-      "Candidate holds a degree matching the required Bachelor level.",
-      "Candidate location 'Bangalore, India' matches job location 'Bangalore, India'."
-    ],
-    "gaps": [
-      "Missing required skill: Postgresql",
-      "Missing preferred skill: Kubernetes"
-    ]
-  },
-  "message": "Job match analysis completed successfully"
-}
-```
-
----
-
 ## API Documentation — Phase 6 Resume Tailoring
 
 ### Base Path: `/api`
@@ -260,109 +198,67 @@ dot-field-backend/
 
 ---
 
-### Tailoring Engine Architecture & Constraints
+## API Documentation — Phase 7 Job Discovery & Aggregation
 
-- **Definition of Tailoring:** Resume Tailoring = selecting + prioritizing + ordering + emphasizing + job-keyword alignment + structured presentation.
-- **Source-Traceability Rule:** Every factual statement in the tailored resume must trace directly to existing candidate profile fields. Unsupported information is omitted.
-- **Anti-Fabrication Guarantee:** Zero invention of skills, metrics ("40% improvement"), achievements, job titles, technologies, or projects. Missing job skills are never inserted as candidate skills.
-- **Deterministic Project Relevance Scoring Formula:**
-  $$\text{projectScore} = (\text{matchedRequiredSkills} \times 3) + (\text{matchedPreferredSkills} \times 2) + (\text{otherMatchedKeywords} \times 1)$$
-- **Experience & Bullet Prioritization:** Strict reverse chronological order across experiences. Intra-experience bullet lines are ranked by job keyword relevance while preserving exact original wording.
-- **Non-Persisted & 100% Deterministic:** Derived on-demand dynamically without database persistence or external LLM/AI services. Same `Profile + Job` inputs always produce identical results.
+### Base Path: `/api`
 
-#### Example Tailored Resume Response (`GET /api/jobs/1/resume/tailor`)
+### Discovery Endpoints
 
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/jobs/discover` | Discover, normalize, deduplicate, and aggregate job listings from supported sources |
+
+---
+
+### Discovery Architecture & Rules
+
+- **Pluggable Source Strategy (`JobSource` & `JobSourceRegistry`):** External sources are encapsulated in pluggable adapters (`JobSource`). `JobSourceRegistry` resolves supported adapters dynamically without discovery orchestrator code modifications.
+- **V1 Source Adapter (`CompanyCareerPageSource`):** Supports configured public feeds and company career listings (`COMPANY_WEBSITE`). Does **not** perform arbitrary user URL fetching, avoiding SSRF security vulnerabilities.
+- **Shared Extraction & Normalization Pipeline (`JobExtractionPipeline`):** Phase 7 discovery reuses the exact same extraction and normalization core (`JobNormalizationUtil`) as Phase 4 manual extraction without code duplication.
+- **3-Level Deterministic Deduplication (`JobDeduplicationService`):**
+  - **Level 1 — Source + External ID:** Identity key `(source, externalId)` for provider-assigned IDs.
+  - **Level 2 — Canonical URL:** Scheme/host lowercased, default ports removed, trailing slashes removed, tracking params (`utm_*`, `ref`, `fbclid`) stripped. Functional params (e.g. `location=bangalore`) are preserved. `http` and `https` remain distinct.
+  - **Level 3 — Composite SHA-256 Fingerprint:** Hashed from `company + title + location (+ description)`. Skipped if minimum company/title/location fields are absent.
+- **Concurrency & Race Condition Protection:** PostgreSQL unique indexes on `(source, externalId)` and `canonicalUrl`. `DataIntegrityViolationException` is caught during concurrent saves and handled by re-fetching and updating existing records.
+- **User Application State Preservation:** When an external listing refresh occurs, externally sourced listing fields (`description`, `salaryMin`, `salaryMax`, `jobUrl`, `lastDiscoveredAt`, etc.) are updated, but **`job.getStatus()` is strictly PRESERVED** across all candidate tracking states (`SAVED`, `APPLIED`, `INTERVIEW`, `OFFER`, `REJECTED`, `ARCHIVED`).
+- **Idempotency & Fail-Safety:** Repeated discovery runs yield 0 new jobs, N unchanged. Source failures do not delete or expire existing jobs.
+- **Configurable Background Scheduler (`JobDiscoveryScheduler`):** Disabled by default (`job-discovery.scheduler.enabled=false`). Includes an execution lock (`AtomicBoolean isRunning`) to prevent overlapping runs when enabled.
+
+#### Example Discovery Request & Response (`POST /api/jobs/discover`)
+
+**Request:**
+```json
+{
+  "source": "COMPANY_WEBSITE",
+  "keyword": "Java Backend Developer",
+  "location": "Bangalore",
+  "remoteType": "REMOTE",
+  "maxResults": 20
+}
+```
+
+**Response:**
 ```json
 {
   "data": {
-    "jobId": 1,
-    "profileId": 1,
-    "summary": "Software Engineer with experience in Java, Spring Boot. Previously worked at Acme Corp.",
-    "skills": {
-      "primary": [
-        "Java",
-        "Spring Boot"
-      ],
-      "secondary": [
-        "Git"
-      ]
-    },
-    "experience": [
+    "discovered": 2,
+    "newJobs": 1,
+    "updatedJobs": 1,
+    "unchangedJobs": 0,
+    "duplicates": 0,
+    "failed": 0,
+    "sourceResults": [
       {
-        "id": 10,
-        "company": "Acme Corp",
-        "role": "Software Engineer",
-        "description": "Developed backend APIs using Java.\nIntegrated PostgreSQL database.",
-        "startDate": "2022-01-01",
-        "endDate": null,
-        "emphasized": true,
-        "matchingKeywords": [
-          "java",
-          "postgresql"
-        ]
+        "source": "COMPANY_WEBSITE",
+        "discovered": 2,
+        "newJobs": 1,
+        "updatedJobs": 1,
+        "unchangedJobs": 0,
+        "failed": 0
       }
-    ],
-    "education": [
-      {
-        "id": 5,
-        "institution": "State University",
-        "degree": "Bachelor of Science",
-        "fieldOfStudy": "Computer Science",
-        "startDate": "2018-09-01",
-        "endDate": "2022-05-31",
-        "grade": "3.8",
-        "emphasized": true
-      }
-    ],
-    "projects": [
-      {
-        "id": 20,
-        "name": "Backend API Service",
-        "description": "RESTful service built with Spring Boot",
-        "githubUrl": "https://github.com/candidate/api",
-        "liveUrl": null,
-        "technologies": [
-          "Java",
-          "Spring Boot"
-        ],
-        "projectScore": 5,
-        "emphasized": true,
-        "matchingKeywords": [
-          "java",
-          "spring boot"
-        ]
-      }
-    ],
-    "links": [
-      {
-        "type": "GitHub",
-        "url": "https://github.com/candidate"
-      }
-    ],
-    "tailoringAnalysis": {
-      "emphasizedSkills": [
-        "Java",
-        "Spring Boot"
-      ],
-      "emphasizedExperiences": [
-        "Software Engineer at Acme Corp"
-      ],
-      "emphasizedProjects": [
-        "Backend API Service"
-      ],
-      "matchedKeywords": [
-        "java",
-        "spring boot",
-        "postgresql"
-      ],
-      "unusedJobKeywords": [
-        "aws",
-        "kubernetes"
-      ],
-      "tailoringNotes": "Emphasized 2 primary skills, 1 experience entries, and 1 projects."
-    }
+    ]
   },
-  "message": "Resume tailored successfully"
+  "message": "Job discovery completed successfully"
 }
 ```
 
@@ -394,31 +290,30 @@ dot-field-backend/
 ## Current Phase
 
 ```
-Phase 6 — Resume Tailoring
+Phase 7 — Job Discovery & Aggregation
 Status: Complete
 ```
 
-### What's included in Phase 6
+### What's included in Phase 7
 
-- ✅ Reused Phase 2 Candidate `Profile` & Phase 3 `Job` domain entities without duplicate models
-- ✅ Reused Phase 5 requirement extraction (`JobRequirementExtractor`) & normalization (`SkillNormalizationUtil`)
-- ✅ 100% deterministic tailoring engine (`ResumeTailoringEngine`)
-- ✅ Precise keyword selector separating matched vs unused keywords (`ResumeKeywordSelector`)
-- ✅ Primary vs. secondary skills builder with zero missing-skill insertion (`ResumeSectionBuilder`)
-- ✅ Strict reverse chronological experience ordering with intra-experience bullet prioritization (`ResumeExperiencePrioritizer`)
-- ✅ Deterministic project relevance scoring formula & stable tie-breaking (`ResumeSectionBuilder`)
-- ✅ Education & social link extraction preserving factual candidate data
-- ✅ Strict source-traceable summary generator (`ResumeSummaryGenerator`)
-- ✅ Explainability metadata breakdown in `tailoringAnalysis`
-- ✅ Dynamic on-demand orchestration service (`ResumeTailoringService`)
-- ✅ `GET /api/jobs/{id}/resume/tailor` REST endpoint in `ResumeTailoringController`
-- ✅ Adversarial anti-fabrication test suite (missing skills, title inflation, unsupported tech, fake metrics, fake achievements, fake projects)
-- ✅ Determinism test suite & empty profile safety tests
-- ✅ 134 total passing automated tests across Phase 1, 2, 3, 4, 5, and 6
+- ✅ Pluggable `JobSource` strategy & `JobSourceRegistry`
+- ✅ `CompanyCareerPageSource` V1 adapter for configured public feeds (`COMPANY_WEBSITE`)
+- ✅ Refactored shared Phase 4 `JobExtractionPipeline` for zero normalization code duplication
+- ✅ `Job.java` entity enhancements: `externalId`, `canonicalUrl`, `deduplicationFingerprint`, `lastDiscoveredAt`
+- ✅ PostgreSQL unique indexes on `(source, externalId)` and `canonicalUrl` for concurrency race-condition protection
+- ✅ 3-level deterministic deduplication engine (`JobDeduplicationService`): Level 1 (External ID) $\to$ Level 2 (Canonical URL) $\to$ Level 3 (SHA-256 Fingerprint)
+- ✅ Conservative URL canonicalization (stripping `utm_*`, preserving functional params, keeping `http`/`https` distinct)
+- ✅ Strict candidate application status preservation (`APPLIED`, `INTERVIEW`, `OFFER`, `REJECTED`, etc. preserved on external refresh)
+- ✅ 100% idempotent repeated discovery execution
+- ✅ Fail-safe source handling without accidental job deletion or expiration
+- ✅ Configurable background scheduler (`JobDiscoveryScheduler`) disabled by default
+- ✅ REST API controller (`JobDiscoveryController`) exposing `POST /api/jobs/discover`
+- ✅ Comprehensive unit & integration tests (`JobSourceTest`, `CompanyCareerPageSourceTest`, `JobDeduplicationServiceTest`, `JobDiscoveryServiceTest`, `JobDiscoveryControllerTest`)
+- ✅ 163 total passing automated tests across Phase 1, 2, 3, 4, 5, 6, and 7
 
 ---
 
-## Future Phases
+## Phase Roadmap
 
 | Phase | Focus                     | Status       |
 |-------|---------------------------|--------------|
@@ -428,6 +323,7 @@ Status: Complete
 | 4     | Job Extraction & Ingestion| ✅ Complete  |
 | 5     | Job Analysis & Matching   | ✅ Complete  |
 | 6     | Resume Tailoring          | ✅ Complete  |
+| 7     | Job Discovery & Aggregation| ✅ Complete |
 
 ---
 

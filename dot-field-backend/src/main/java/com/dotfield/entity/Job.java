@@ -8,7 +8,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "jobs")
+@Table(name = "jobs", indexes = {
+        @Index(name = "idx_jobs_source_external_id", columnList = "source, externalId"),
+        @Index(name = "idx_jobs_canonical_url", columnList = "canonicalUrl"),
+        @Index(name = "idx_jobs_fingerprint", columnList = "deduplicationFingerprint")
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -19,6 +23,9 @@ public class Job {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    @Column(length = 200)
+    private String externalId;
 
     @Column(nullable = false, length = 200)
     private String title;
@@ -34,6 +41,12 @@ public class Job {
 
     @Column(length = 2048)
     private String jobUrl;
+
+    @Column(length = 2048)
+    private String canonicalUrl;
+
+    @Column(length = 64)
+    private String deduplicationFingerprint;
 
     @Column(nullable = false, length = 100)
     private String source;
@@ -58,6 +71,8 @@ public class Job {
     private String currency;
 
     private LocalDate postedDate;
+
+    private LocalDateTime lastDiscoveredAt;
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
