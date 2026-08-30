@@ -15,7 +15,6 @@ import com.dotfield.repository.JobRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
@@ -170,15 +169,16 @@ class JobServiceTest {
     @Test
     @SuppressWarnings("unchecked")
     void getAllJobs_noFilters_success() {
-        Pageable pageable = PageRequest.of(1, 5);
-        Page<Job> page = new PageImpl<>(List.of(sampleJob), pageable, 10);
+        Pageable pageable = PageRequest.of(0, 5);
+        List<Job> jobs = List.of(sampleJob, sampleJob, sampleJob, sampleJob, sampleJob);
+        Page<Job> page = new PageImpl<>(jobs, pageable, 10);
 
         when(jobRepository.findAll(any(Specification.class), eq(pageable))).thenReturn(page);
 
         PagedResponse<JobResponse> result = jobService.getAllJobs(null, null, null, null, null, pageable);
 
         assertNotNull(result);
-        assertEquals(1, result.getPage());
+        assertEquals(0, result.getPage());
         assertEquals(5, result.getSize());
         assertEquals(10, result.getTotalElements());
         assertEquals(2, result.getTotalPages());
