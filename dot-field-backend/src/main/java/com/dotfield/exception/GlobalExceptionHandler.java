@@ -164,6 +164,22 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle explicit conflict exceptions → 409.
+     */
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ApiError> handleConflict(ConflictException ex) {
+        log.warn("Conflict exception: {}", ex.getMessage());
+
+        ApiError error = ApiError.builder()
+                .status(HttpStatus.CONFLICT.value())
+                .message(ex.getMessage())
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
+    }
+
+    /**
      * Handle database data integrity / conflict exceptions → 409.
      */
     @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)

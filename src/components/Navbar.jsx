@@ -23,12 +23,26 @@ export default function Navbar() {
         </Link>
         
         {isAuthenticated && (
-          <Link
-            to="/dashboard"
-            className={`nav-link ${isDashboard ? 'nav-link--active' : ''}`}
-          >
-            Dashboard
-          </Link>
+          <>
+            <Link
+              to="/dashboard"
+              className={`nav-link ${isDashboard ? 'nav-link--active' : ''}`}
+            >
+              Jobs
+            </Link>
+            <Link
+              to="/applications"
+              className={`nav-link ${location.pathname.startsWith('/applications') ? 'nav-link--active' : ''}`}
+            >
+              Applications
+            </Link>
+            <Link
+              to="/profile"
+              className={`nav-link ${location.pathname.startsWith('/profile') ? 'nav-link--active' : ''}`}
+            >
+              Profile
+            </Link>
+          </>
         )}
 
         <a

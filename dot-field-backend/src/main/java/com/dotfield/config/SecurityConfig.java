@@ -72,8 +72,8 @@ public class SecurityConfig {
                         // Authenticated endpoints — read-only job access for USER or ADMIN
                         .requestMatchers(HttpMethod.GET, "/jobs", "/jobs/**").authenticated()
 
-                        // Authenticated endpoints — profile and auth
-                        .requestMatchers("/auth/me", "/profile/**").authenticated()
+                        // Authenticated endpoints — profile, auth, and application tracking
+                        .requestMatchers("/auth/me", "/profile/**", "/applications/**").authenticated()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

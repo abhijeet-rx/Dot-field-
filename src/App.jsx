@@ -6,6 +6,8 @@ import DotField from './components/DotField';
 import Navbar from './components/Navbar';
 import Dashboard from './pages/Dashboard';
 import JobIntelligence from './pages/JobIntelligence';
+import Profile from './pages/Profile';
+import Applications from './pages/Applications';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import './index.css';
@@ -93,6 +95,22 @@ export default function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <Profile />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/applications"
+            element={
+              <ProtectedRoute>
+                <Applications />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/dashboard"
             element={

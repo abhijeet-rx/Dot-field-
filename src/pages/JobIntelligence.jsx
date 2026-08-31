@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { fetchJob, fetchJobMatch, fetchTailoredResume } from '../api/client';
+import { fetchJob, fetchJobMatch, fetchTailoredResume, createApplication } from '../api/client';
 import MatchScoreRing from '../components/MatchScoreRing';
 import SkillBadge from '../components/SkillBadge';
+import ResumeExportModal from '../components/ResumeExportModal';
 
 function formatSalary(min, max, currency) {
   if (!min && !max) return null;
@@ -85,6 +86,28 @@ export default function JobIntelligence() {
     loadJobData();
   }, [loadJobData]);
 
+  const [tracked, setTracked] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [trackingMsg, setTrackingMsg] = useState(null);
+
+  async function handleTrackApplication() {
+    setTrackingMsg(null);
+    try {
+      await createApplication({ jobId: Number(id), status: 'SAVED' });
+      setTracked(true);
+      setTrackingMsg('Job added to your Application Tracker!');
+      setTimeout(() => setTrackingMsg(null), 4000);
+    } catch (err) {
+      if (err.message.includes('already exists')) {
+        setTracked(true);
+        setTrackingMsg('Job is already tracked in your applications.');
+        setTimeout(() => setTrackingMsg(null), 4000);
+      } else {
+        alert(err.message);
+      }
+    }
+  }
+
   async function handleTailorResume() {
     setResumeRequested(true);
     setLoadingResume(true);
@@ -92,6 +115,7 @@ export default function JobIntelligence() {
     try {
       const resumeData = await fetchTailoredResume(id);
       setResume(resumeData);
+      setShowExportModal(true);
     } catch (err) {
       setErrorResume(err.message);
     } finally {
@@ -147,13 +171,24 @@ export default function JobIntelligence() {
                 <h1 className="job-header-card__title">{job.title}</h1>
                 <p className="job-header-card__company">{job.company}</p>
               </div>
-              {job.jobUrl && (
-                <a href={job.jobUrl} target="_blank" rel="noopener noreferrer" className="btn-apply">
-                  Apply Manually
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                </a>
-              )}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {job.jobUrl && (
+                  <a href={job.jobUrl} target="_blank" rel="noopener noreferrer" className="btn-apply">
+                    Apply Manually
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  </a>
+                )}
+                <button className="btn-primary" onClick={handleTrackApplication}>
+                  📌 {tracked ? 'Tracked' : 'Track Application'}
+                </button>
+              </div>
             </div>
+
+            {trackingMsg && (
+              <div style={{ margin: '12px 0 0', padding: '10px 14px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#34d399', borderRadius: '8px', fontSize: '0.85rem' }}>
+                ✓ {trackingMsg}
+              </div>
+            )}
             <div className="job-header-card__meta">
               {job.location && <span className="meta-tag"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>{job.location}</span>}
               {job.remoteType && <span className="meta-tag meta-tag--accent">{remoteLabels[job.remoteType] || job.remoteType}</span>}
@@ -454,6 +489,13 @@ export default function JobIntelligence() {
           )}
         </div>
       </div>
+
+      {showExportModal && resume && (
+        <ResumeExportModal
+          tailoredData={resume}
+          onClose={() => setShowExportModal(false)}
+        />
+      )}
     </div>
   );
 }
