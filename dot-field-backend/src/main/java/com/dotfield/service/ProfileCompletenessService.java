@@ -29,21 +29,37 @@ public class ProfileCompletenessService {
 
         // 1. Contact (20%)
         int contactScore = 0;
-        if (profile.getName() != null && !profile.getName().isBlank()) contactScore += 30;
-        if (profile.getEmail() != null && !profile.getEmail().isBlank()) contactScore += 30;
-        if (profile.getPhone() != null && !profile.getPhone().isBlank()) contactScore += 20;
-        if (profile.getLocation() != null && !profile.getLocation().isBlank()) contactScore += 20;
-        sections.put("contact", contactScore);
-        if (contactScore < 100) {
-            recommendations.add("Add phone number and location to improve contact info");
+        if (profile.getName() != null && !profile.getName().isBlank()) {
+            contactScore += 30;
+        } else {
+            recommendations.add("Add your full name");
         }
+
+        if (profile.getEmail() != null && !profile.getEmail().isBlank()) {
+            contactScore += 30;
+        } else {
+            recommendations.add("Add your contact email address");
+        }
+
+        if (profile.getPhone() != null && !profile.getPhone().isBlank()) {
+            contactScore += 20;
+        } else {
+            recommendations.add("Add your phone number");
+        }
+
+        if (profile.getLocation() != null && !profile.getLocation().isBlank()) {
+            contactScore += 20;
+        } else {
+            recommendations.add("Add your location");
+        }
+        sections.put("contact", contactScore);
 
         // 2. Skills (25%)
         int skillCount = (profile.getSkills() != null) ? profile.getSkills().size() : 0;
         int skillScore = Math.min(100, skillCount * 20);
         sections.put("skills", skillScore);
         if (skillScore < 100) {
-            recommendations.add("Add at least 5 key technical/soft skills to your profile");
+            recommendations.add("Add at least 5 key technical or soft skills to your profile");
         }
 
         // 3. Experience (25%)
@@ -51,7 +67,7 @@ public class ProfileCompletenessService {
         int expScore = Math.min(100, expCount * 50);
         sections.put("experience", expScore);
         if (expScore < 100) {
-            recommendations.add("Add your past work experience entries");
+            recommendations.add("Add past work experience entries");
         }
 
         // 4. Education (15%)
@@ -59,7 +75,7 @@ public class ProfileCompletenessService {
         int eduScore = (eduCount > 0) ? 100 : 0;
         sections.put("education", eduScore);
         if (eduScore < 100) {
-            recommendations.add("Add degree or educational institution details");
+            recommendations.add("Add educational degrees or certifications");
         }
 
         // 5. Projects (15%)
@@ -67,7 +83,7 @@ public class ProfileCompletenessService {
         int projScore = (projCount > 0) ? 100 : 0;
         sections.put("projects", projScore);
         if (projScore < 100) {
-            recommendations.add("Add personal or professional project highlights");
+            recommendations.add("Add personal or open-source project highlights");
         }
 
         // Overall weighted average

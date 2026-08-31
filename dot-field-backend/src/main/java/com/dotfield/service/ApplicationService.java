@@ -32,6 +32,7 @@ public class ApplicationService {
     private final JobRepository jobRepository;
     private final JobMapper jobMapper;
     private final JobMatchingService jobMatchingService;
+    private final ApplicationStatusTransitionValidator statusTransitionValidator;
 
     public ApplicationResponse createApplication(Long userId, CreateApplicationRequest request) {
         Profile profile = findProfileByUserId(userId);
@@ -45,12 +46,24 @@ public class ApplicationService {
         ApplicationStatus status = request.getStatus() != null ? request.getStatus() : ApplicationStatus.SAVED;
         LocalDateTime appliedAt = (status == ApplicationStatus.APPLIED) ? LocalDateTime.now() : null;
 
+        Integer fitScore = null;
+        String matchCategory = null;
+        try {
+            JobMatchResponse match = jobMatchingService.analyzeJob(job.getId());
+            fitScore = match.getOverallScore();
+            matchCategory = match.getMatchCategory();
+        } catch (Exception ex) {
+            log.warn("Could not calculate fit match score snapshot for Job ID: {} on application creation: {}", job.getId(), ex.getMessage());
+        }
+
         Application application = Application.builder()
                 .profile(profile)
                 .job(job)
                 .status(status)
                 .notes(request.getNotes())
                 .appliedAt(appliedAt)
+                .fitScore(fitScore)
+                .matchCategory(matchCategory)
                 .build();
 
         Application saved = applicationRepository.save(application);
@@ -59,16 +72,11 @@ public class ApplicationService {
     }
 
     @Transactional(readOnly = true)
-    public PagedResponse<ApplicationResponse> getApplications(Long userId, ApplicationStatus status, Pageable pageable) {
+    public PagedResponse<ApplicationResponse> getApplications(Long userId, ApplicationStatus status, String search, Pageable pageable) {
         Profile profile = findProfileByUserId(userId);
-        Page<Application> page;
+        String searchQuery = (search != null && !search.isBlank()) ? search.trim() : null;
 
-        if (status != null) {
-            page = applicationRepository.findAllByProfileIdAndStatus(profile.getId(), status, pageable);
-        } else {
-            page = applicationRepository.findAllByProfileId(profile.getId(), pageable);
-        }
-
+        Page<Application> page = applicationRepository.searchApplications(profile.getId(), status, searchQuery, pageable);
         Page<ApplicationResponse> dtoPage = page.map(this::mapToResponse);
         return PagedResponse.fromPage(dtoPage);
     }
@@ -81,10 +89,19 @@ public class ApplicationService {
         return mapToResponse(application);
     }
 
+    @Transactional(readOnly = true)
+    public Optional<ApplicationResponse> getApplicationByJobId(Long userId, Long jobId) {
+        Profile profile = findProfileByUserId(userId);
+        return applicationRepository.findByProfileIdAndJobId(profile.getId(), jobId)
+                .map(this::mapToResponse);
+    }
+
     public ApplicationResponse updateStatus(Long userId, Long applicationId, ApplicationStatus newStatus) {
         Profile profile = findProfileByUserId(userId);
         Application application = applicationRepository.findByIdAndProfileId(applicationId, profile.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Application not found with id: " + applicationId));
+
+        statusTransitionValidator.validateTransition(application.getStatus(), newStatus);
 
         application.setStatus(newStatus);
         if (newStatus == ApplicationStatus.APPLIED && application.getAppliedAt() == null) {
@@ -157,11 +174,10 @@ public class ApplicationService {
                 offerCount++;
             }
 
-            try {
-                JobMatchResponse match = jobMatchingService.analyzeJob(app.getJob().getId());
-                sumFitScore += match.getOverallScore();
+            if (app.getFitScore() != null) {
+                sumFitScore += app.getFitScore();
                 fitCount++;
-            } catch (Exception ignored) {}
+            }
         }
 
         double responseRate = appliedBaseCount > 0 ? (double) respondedCount / appliedBaseCount * 100.0 : 0.0;
@@ -186,22 +202,14 @@ public class ApplicationService {
 
     private ApplicationResponse mapToResponse(Application app) {
         JobResponse jobDto = jobMapper.toJobResponse(app.getJob());
-        Integer fitScore = null;
-        String matchCategory = null;
-
-        try {
-            JobMatchResponse match = jobMatchingService.analyzeJob(app.getJob().getId());
-            fitScore = match.getOverallScore();
-            matchCategory = match.getMatchCategory();
-        } catch (Exception ignored) {}
 
         return ApplicationResponse.builder()
                 .id(app.getId())
                 .job(jobDto)
                 .status(app.getStatus())
                 .notes(app.getNotes())
-                .fitScore(fitScore)
-                .matchCategory(matchCategory)
+                .fitScore(app.getFitScore())
+                .matchCategory(app.getMatchCategory())
                 .appliedAt(app.getAppliedAt())
                 .createdAt(app.getCreatedAt())
                 .updatedAt(app.getUpdatedAt())

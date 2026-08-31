@@ -41,6 +41,12 @@ public class Application {
     @Column(name = "applied_at")
     private LocalDateTime appliedAt;
 
+    @Column(name = "fit_score")
+    private Integer fitScore;
+
+    @Column(name = "match_category", length = 50)
+    private String matchCategory;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

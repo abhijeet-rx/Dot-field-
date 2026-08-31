@@ -56,6 +56,7 @@ export default function JobIntelligence() {
   const [errorJob, setErrorJob] = useState(null);
   const [errorMatch, setErrorMatch] = useState(null);
   const [errorResume, setErrorResume] = useState(null);
+  const [trackedStatus, setTrackedStatus] = useState(null);
 
   const loadJobData = useCallback(async () => {
     setLoadingJob(true);
@@ -79,6 +80,16 @@ export default function JobIntelligence() {
       setErrorMatch(err.message);
     } finally {
       setLoadingMatch(false);
+    }
+
+    try {
+      const existingApp = await checkJobTrackedApi(id);
+      if (existingApp) {
+        setTracked(true);
+        setTrackedStatus(existingApp.status);
+      }
+    } catch (err) {
+      // Ignore check errors
     }
   }, [id]);
 
@@ -179,7 +190,7 @@ export default function JobIntelligence() {
                   </a>
                 )}
                 <button className="btn-primary" onClick={handleTrackApplication}>
-                  📌 {tracked ? 'Tracked' : 'Track Application'}
+                  📌 {tracked ? (trackedStatus ? `Tracked (${trackedStatus})` : 'Tracked') : 'Track Application'}
                 </button>
               </div>
             </div>

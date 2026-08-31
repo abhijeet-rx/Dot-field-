@@ -161,12 +161,17 @@ export function fetchTailoredResume(id) {
 }
 
 /** Applications API */
-export function fetchApplications({ page = 0, size = 20, status } = {}) {
+export function fetchApplications({ page = 0, size = 20, status, search } = {}) {
   const params = new URLSearchParams();
   params.set('page', page);
   params.set('size', size);
   if (status) params.set('status', status);
+  if (search) params.set('search', search);
   return request(`/applications?${params.toString()}`);
+}
+
+export function checkJobTrackedApi(jobId) {
+  return request(`/applications/check?jobId=${jobId}`);
 }
 
 export function fetchApplication(id) {

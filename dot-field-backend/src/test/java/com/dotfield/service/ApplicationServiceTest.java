@@ -2,6 +2,7 @@ package com.dotfield.service;
 
 import com.dotfield.dto.*;
 import com.dotfield.entity.*;
+import com.dotfield.exception.BadRequestException;
 import com.dotfield.exception.ConflictException;
 import com.dotfield.exception.ResourceNotFoundException;
 import com.dotfield.mapper.JobMapper;
@@ -46,6 +47,9 @@ class ApplicationServiceTest {
     @Mock
     private JobMatchingService jobMatchingService;
 
+    @Spy
+    private ApplicationStatusTransitionValidator statusTransitionValidator = new ApplicationStatusTransitionValidator();
+
     @InjectMocks
     private ApplicationService applicationService;
 
@@ -75,13 +79,15 @@ class ApplicationServiceTest {
                 .job(sampleJob)
                 .status(ApplicationStatus.SAVED)
                 .notes("Interesting role")
+                .fitScore(85)
+                .matchCategory("STRONG_MATCH")
                 .createdAt(LocalDateTime.now())
                 .updatedAt(LocalDateTime.now())
                 .build();
     }
 
     @Test
-    @DisplayName("createApplication — Success creating application")
+    @DisplayName("createApplication — Success creating application and persisting fit score snapshot")
     void createApplication_success() {
         CreateApplicationRequest request = CreateApplicationRequest.builder()
                 .jobId(10L)
@@ -89,9 +95,11 @@ class ApplicationServiceTest {
                 .notes("Applied via referral")
                 .build();
 
+        JobMatchResponse mockMatch = JobMatchResponse.builder().overallScore(85).matchCategory("STRONG_MATCH").build();
         when(profileRepository.findByUserId(1L)).thenReturn(Optional.of(sampleProfile));
         when(jobRepository.findById(10L)).thenReturn(Optional.of(sampleJob));
         when(applicationRepository.existsByProfileIdAndJobId(1L, 10L)).thenReturn(false);
+        when(jobMatchingService.analyzeJob(10L)).thenReturn(mockMatch);
         when(applicationRepository.save(any(Application.class))).thenReturn(sampleApplication);
 
         ApplicationResponse response = applicationService.createApplication(1L, request);
@@ -117,17 +125,8 @@ class ApplicationServiceTest {
     }
 
     @Test
-    @DisplayName("getApplicationById — Ownership validation masks foreign application with 404")
-    void getApplicationById_foreignApplication_throwsResourceNotFoundException() {
-        when(profileRepository.findByUserId(1L)).thenReturn(Optional.of(sampleProfile));
-        when(applicationRepository.findByIdAndProfileId(999L, 1L)).thenReturn(Optional.empty());
-
-        assertThrows(ResourceNotFoundException.class, () -> applicationService.getApplicationById(1L, 999L));
-    }
-
-    @Test
-    @DisplayName("updateStatus — Transitions status and sets appliedAt timestamp")
-    void updateStatus_success() {
+    @DisplayName("updateStatus — Valid transition SAVED -> APPLIED sets appliedAt timestamp")
+    void updateStatus_validTransition_setsAppliedAt() {
         when(profileRepository.findByUserId(1L)).thenReturn(Optional.of(sampleProfile));
         when(applicationRepository.findByIdAndProfileId(100L, 1L)).thenReturn(Optional.of(sampleApplication));
         when(applicationRepository.save(any(Application.class))).thenReturn(sampleApplication);
@@ -140,16 +139,50 @@ class ApplicationServiceTest {
     }
 
     @Test
-    @DisplayName("getAnalytics — Computes counts and rates correctly")
+    @DisplayName("updateStatus — Invalid transition SAVED -> OFFER throws BadRequestException (400)")
+    void updateStatus_invalidTransitionSavedToOffer_throwsBadRequestException() {
+        when(profileRepository.findByUserId(1L)).thenReturn(Optional.of(sampleProfile));
+        when(applicationRepository.findByIdAndProfileId(100L, 1L)).thenReturn(Optional.of(sampleApplication));
+
+        assertThrows(BadRequestException.class, () -> applicationService.updateStatus(1L, 100L, ApplicationStatus.OFFER));
+        verify(applicationRepository, never()).save(any(Application.class));
+    }
+
+    @Test
+    @DisplayName("updateStatus — Transition out of terminal state REJECTED -> INTERVIEW throws BadRequestException (400)")
+    void updateStatus_terminalStateRejected_throwsBadRequestException() {
+        sampleApplication.setStatus(ApplicationStatus.REJECTED);
+        when(profileRepository.findByUserId(1L)).thenReturn(Optional.of(sampleProfile));
+        when(applicationRepository.findByIdAndProfileId(100L, 1L)).thenReturn(Optional.of(sampleApplication));
+
+        assertThrows(BadRequestException.class, () -> applicationService.updateStatus(1L, 100L, ApplicationStatus.INTERVIEW));
+    }
+
+    @Test
+    @DisplayName("updateStatus — Subsequent valid transition preserves original appliedAt timestamp")
+    void updateStatus_preservesOriginalAppliedAtTimestamp() {
+        LocalDateTime originalAppliedAt = LocalDateTime.now().minusDays(5);
+        sampleApplication.setStatus(ApplicationStatus.APPLIED);
+        sampleApplication.setAppliedAt(originalAppliedAt);
+
+        when(profileRepository.findByUserId(1L)).thenReturn(Optional.of(sampleProfile));
+        when(applicationRepository.findByIdAndProfileId(100L, 1L)).thenReturn(Optional.of(sampleApplication));
+        when(applicationRepository.save(any(Application.class))).thenReturn(sampleApplication);
+
+        applicationService.updateStatus(1L, 100L, ApplicationStatus.INTERVIEW);
+
+        assertEquals(ApplicationStatus.INTERVIEW, sampleApplication.getStatus());
+        assertEquals(originalAppliedAt, sampleApplication.getAppliedAt());
+    }
+
+    @Test
+    @DisplayName("getAnalytics — Computes counts, rates, and fit score average from persisted snapshots without N+1 calls")
     void getAnalytics_success() {
-        Application app1 = Application.builder().id(1L).profile(sampleProfile).job(sampleJob).status(ApplicationStatus.APPLIED).build();
-        Application app2 = Application.builder().id(2L).profile(sampleProfile).job(sampleJob).status(ApplicationStatus.INTERVIEW).build();
+        Application app1 = Application.builder().id(1L).profile(sampleProfile).job(sampleJob).status(ApplicationStatus.APPLIED).fitScore(80).build();
+        Application app2 = Application.builder().id(2L).profile(sampleProfile).job(sampleJob).status(ApplicationStatus.INTERVIEW).fitScore(90).build();
 
         when(profileRepository.findByUserId(1L)).thenReturn(Optional.of(sampleProfile));
         when(applicationRepository.findAllByProfileId(1L)).thenReturn(List.of(app1, app2));
-
-        JobMatchResponse mockMatch = JobMatchResponse.builder().overallScore(80).matchCategory("STRONG_MATCH").build();
-        when(jobMatchingService.analyzeJob(anyLong())).thenReturn(mockMatch);
 
         ApplicationAnalyticsResponse analytics = applicationService.getAnalytics(1L);
 
@@ -159,5 +192,8 @@ class ApplicationServiceTest {
         assertEquals(1, analytics.getStatusCounts().get(ApplicationStatus.INTERVIEW));
         assertEquals(50.0, analytics.getResponseRate());
         assertEquals(50.0, analytics.getInterviewRate());
+        assertEquals(85.0, analytics.getAverageFitScore());
+
+        verify(jobMatchingService, never()).analyzeJob(anyLong());
     }
 }

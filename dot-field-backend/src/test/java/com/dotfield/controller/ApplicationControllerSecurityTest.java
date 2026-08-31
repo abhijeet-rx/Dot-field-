@@ -19,8 +19,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -115,7 +114,6 @@ class ApplicationControllerSecurityTest {
     void idorAccess_returns404Masked() throws Exception {
         String body = "{\"jobId\":" + sampleJob.getId() + ",\"status\":\"SAVED\"}";
 
-        // Candidate A creates application
         String responseStr = mockMvc.perform(post("/applications")
                         .header("Authorization", "Bearer " + tokenA)
                         .contentType(MediaType.APPLICATION_JSON)
@@ -126,21 +124,55 @@ class ApplicationControllerSecurityTest {
         Long appId = com.fasterxml.jackson.databind.ObjectMapper.class.getDeclaredConstructor().newInstance()
                 .readTree(responseStr).get("data").get("id").asLong();
 
-        // Candidate B attempts to read Candidate A's application -> 404 Not Found
+        // Candidate B attempts GET -> 404
         mockMvc.perform(get("/applications/" + appId)
                         .header("Authorization", "Bearer " + tokenB))
                 .andExpect(status().isNotFound());
 
-        // Candidate B attempts to update Candidate A's status -> 404 Not Found
+        // Candidate B attempts PATCH status -> 404
         mockMvc.perform(patch("/applications/" + appId + "/status")
                         .header("Authorization", "Bearer " + tokenB)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":\"APPLIED\"}"))
                 .andExpect(status().isNotFound());
 
-        // Candidate B attempts to delete Candidate A's application -> 404 Not Found
+        // Candidate B attempts DELETE -> 404
         mockMvc.perform(delete("/applications/" + appId)
                         .header("Authorization", "Bearer " + tokenB))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("Cross-User Isolation: Candidate B listing applications receives empty list, not Candidate A's application")
+    void listApplications_isolatedPerCandidate() throws Exception {
+        String body = "{\"jobId\":" + sampleJob.getId() + ",\"status\":\"SAVED\"}";
+
+        // Candidate A creates application
+        mockMvc.perform(post("/applications")
+                        .header("Authorization", "Bearer " + tokenA)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isCreated());
+
+        // Candidate A lists -> contains 1 application
+        mockMvc.perform(get("/applications")
+                        .header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements", is(1)));
+
+        // Candidate B lists -> contains 0 applications
+        mockMvc.perform(get("/applications")
+                        .header("Authorization", "Bearer " + tokenB))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements", is(0)));
+    }
+
+    @Test
+    @DisplayName("Sort parameter whitelist validation returns 400 for invalid sort field")
+    void getApplications_invalidSortField_returns400() throws Exception {
+        mockMvc.perform(get("/applications?sortBy=maliciousColumn")
+                        .header("Authorization", "Bearer " + tokenA))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Invalid sort field")));
     }
 }

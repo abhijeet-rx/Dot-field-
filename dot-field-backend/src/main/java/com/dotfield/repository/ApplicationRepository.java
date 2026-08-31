@@ -21,12 +21,17 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
 
     Page<Application> findAllByProfileIdAndStatus(Long profileId, ApplicationStatus status, Pageable pageable);
 
+    @Query("SELECT a FROM Application a WHERE a.profile.id = :profileId " +
+           "AND (:status IS NULL OR a.status = :status) " +
+           "AND (:search IS NULL OR LOWER(a.job.title) LIKE LOWER(CONCAT('%', :search, '%')) OR LOWER(a.job.company) LIKE LOWER(CONCAT('%', :search, '%')))")
+    Page<Application> searchApplications(@Param("profileId") Long profileId,
+                                         @Param("status") ApplicationStatus status,
+                                         @Param("search") String search,
+                                         Pageable pageable);
+
     Optional<Application> findByProfileIdAndJobId(Long profileId, Long jobId);
 
     boolean existsByProfileIdAndJobId(Long profileId, Long jobId);
 
     List<Application> findAllByProfileId(Long profileId);
-
-    @Query("SELECT a.status, COUNT(a) FROM Application a WHERE a.profile.id = :profileId GROUP BY a.status")
-    List<Object[]> countApplicationsByStatusGrouped(@Param("profileId") Long profileId);
 }

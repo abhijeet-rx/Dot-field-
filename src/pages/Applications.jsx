@@ -18,26 +18,31 @@ export default function Applications() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const [viewMode, setViewMode] = useState('kanban'); // 'kanban' or 'table'
+  const [viewMode, setViewMode] = useState('kanban');
   const [statusFilter, setStatusFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalElements, setTotalElements] = useState(0);
 
   const loadTrackerData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const [appsData, analyticsData] = await Promise.all([
-        fetchApplications({ page: 0, size: 100, status: statusFilter || undefined }),
+        fetchApplications({ page, size: 20, status: statusFilter || undefined, search: searchQuery || undefined }),
         fetchApplicationAnalytics()
       ]);
       setApplications(appsData.content || []);
+      setTotalPages(appsData.totalPages || 1);
+      setTotalElements(appsData.totalElements || 0);
       setAnalytics(analyticsData);
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [page, statusFilter, searchQuery]);
 
   useEffect(() => {
     loadTrackerData();
@@ -70,14 +75,6 @@ export default function Applications() {
       alert(err.message);
     }
   }
-
-  const filteredApps = applications.filter(app => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    const title = (app.job?.title || '').toLowerCase();
-    const company = (app.job?.company || '').toLowerCase();
-    return title.includes(q) || company.includes(q);
-  });
 
   return (
     <div style={{ padding: '40px 24px', maxWidth: '1400px', margin: '0 auto' }}>
@@ -134,13 +131,13 @@ export default function Applications() {
           type="text"
           placeholder="Filter by company or position..."
           value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
+          onChange={e => { setSearchQuery(e.target.value); setPage(0); }}
           className="filter-input"
           style={{ flex: 1, minWidth: '250px' }}
         />
         <select
           value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
+          onChange={e => { setStatusFilter(e.target.value); setPage(0); }}
           className="filter-select"
         >
           <option value="">All Statuses</option>
@@ -164,7 +161,7 @@ export default function Applications() {
         <>
           {viewMode === 'kanban' ? (
             <ApplicationKanban
-              applications={filteredApps}
+              applications={applications}
               onUpdateStatus={handleUpdateStatus}
               onUpdateNotes={handleUpdateNotes}
               onDelete={handleDelete}
@@ -183,7 +180,7 @@ export default function Applications() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredApps.map(app => (
+                  {applications.map(app => (
                     <tr key={app.id} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.04)', fontSize: '0.9rem' }}>
                       <td style={{ padding: '12px 16px' }}>
                         <Link to={`/dashboard/${app.job?.id}`} style={{ color: '#f8fafc', fontWeight: 600, textDecoration: 'none' }}>
@@ -235,7 +232,7 @@ export default function Applications() {
                       </td>
                     </tr>
                   ))}
-                  {filteredApps.length === 0 && (
+                  {applications.length === 0 && (
                     <tr>
                       <td colSpan={6} style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)' }}>
                         No applications found matching criteria.
@@ -244,6 +241,33 @@ export default function Applications() {
                   )}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '24px' }}>
+              <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                Showing page {page + 1} of {totalPages} ({totalElements} total applications)
+              </div>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  disabled={page === 0}
+                  onClick={() => setPage(p => Math.max(0, p - 1))}
+                  className="btn-secondary"
+                  style={{ opacity: page === 0 ? 0.5 : 1, cursor: page === 0 ? 'not-allowed' : 'pointer' }}
+                >
+                  ← Previous
+                </button>
+                <button
+                  disabled={page >= totalPages - 1}
+                  onClick={() => setPage(p => p + 1)}
+                  className="btn-secondary"
+                  style={{ opacity: page >= totalPages - 1 ? 0.5 : 1, cursor: page >= totalPages - 1 ? 'not-allowed' : 'pointer' }}
+                >
+                  Next →
+                </button>
+              </div>
             </div>
           )}
         </>

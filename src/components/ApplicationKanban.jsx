@@ -7,14 +7,15 @@ const STAGES = [
   { key: 'SCREENING', label: 'Screening', color: '#818cf8' },
   { key: 'INTERVIEW', label: 'Interview', color: '#c084fc' },
   { key: 'OFFER', label: 'Offer', color: '#34d399' },
-  { key: 'REJECTED', label: 'Rejected', color: '#f87171' }
+  { key: 'REJECTED', label: 'Rejected', color: '#f87171' },
+  { key: 'WITHDRAWN', label: 'Withdrawn', color: '#64748b' }
 ];
 
 export default function ApplicationKanban({ applications = [], onUpdateStatus, onUpdateNotes, onDelete }) {
   return (
     <div style={{
       display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
       gap: '16px',
       overflowX: 'auto',
       paddingBottom: '16px'
