@@ -1,12 +1,25 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 
-const STATUS_OPTIONS = ['SAVED', 'APPLIED', 'SCREENING', 'INTERVIEW', 'OFFER', 'REJECTED', 'WITHDRAWN'];
+/**
+ * Issue 2: Lifecycle-aware status transition map.
+ * Frontend mirrors backend transitions for UX only — backend remains the source of truth.
+ */
+const VALID_TRANSITIONS = {
+  SAVED:     ['SAVED', 'APPLIED', 'WITHDRAWN'],
+  APPLIED:   ['APPLIED', 'SCREENING', 'INTERVIEW', 'OFFER', 'REJECTED', 'WITHDRAWN'],
+  SCREENING: ['SCREENING', 'INTERVIEW', 'OFFER', 'REJECTED', 'WITHDRAWN'],
+  INTERVIEW: ['INTERVIEW', 'OFFER', 'REJECTED', 'WITHDRAWN'],
+  OFFER:     ['OFFER', 'WITHDRAWN'],
+  REJECTED:  ['REJECTED'],
+  WITHDRAWN: ['WITHDRAWN']
+};
 
 export default function ApplicationCard({ application, onUpdateStatus, onUpdateNotes, onDelete }) {
   if (!application) return null;
 
   const { id, job = {}, status, notes, fitScore } = application;
+  const availableStatuses = VALID_TRANSITIONS[status] || [status];
 
   return (
     <div style={{
@@ -56,7 +69,7 @@ export default function ApplicationCard({ application, onUpdateStatus, onUpdateN
           className="filter-select"
           style={{ fontSize: '0.75rem', padding: '2px 6px' }}
         >
-          {STATUS_OPTIONS.map(s => (
+          {availableStatuses.map(s => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>

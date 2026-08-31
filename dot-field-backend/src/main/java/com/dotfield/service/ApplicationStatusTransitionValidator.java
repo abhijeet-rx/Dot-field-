@@ -11,6 +11,9 @@ import java.util.Set;
 @Component
 public class ApplicationStatusTransitionValidator {
 
+    private static final Set<ApplicationStatus> VALID_CREATION_STATUSES =
+            EnumSet.of(ApplicationStatus.SAVED, ApplicationStatus.APPLIED);
+
     private static final Map<ApplicationStatus, Set<ApplicationStatus>> ALLOWED_TRANSITIONS = Map.of(
             ApplicationStatus.SAVED, EnumSet.of(ApplicationStatus.APPLIED, ApplicationStatus.WITHDRAWN),
             ApplicationStatus.APPLIED, EnumSet.of(ApplicationStatus.SCREENING, ApplicationStatus.INTERVIEW, ApplicationStatus.OFFER, ApplicationStatus.REJECTED, ApplicationStatus.WITHDRAWN),
@@ -18,6 +21,17 @@ public class ApplicationStatusTransitionValidator {
             ApplicationStatus.INTERVIEW, EnumSet.of(ApplicationStatus.OFFER, ApplicationStatus.REJECTED, ApplicationStatus.WITHDRAWN),
             ApplicationStatus.OFFER, EnumSet.of(ApplicationStatus.WITHDRAWN)
     );
+
+    /**
+     * Validates that the requested initial status is allowed for application creation.
+     * Only SAVED and APPLIED are valid creation statuses.
+     */
+    public void validateCreationStatus(ApplicationStatus status) {
+        if (status != null && !VALID_CREATION_STATUSES.contains(status)) {
+            throw new BadRequestException(
+                    "Invalid initial application status: " + status + ". Allowed creation statuses are: " + VALID_CREATION_STATUSES);
+        }
+    }
 
     public void validateTransition(ApplicationStatus currentStatus, ApplicationStatus newStatus) {
         if (currentStatus == newStatus) {
@@ -34,3 +48,4 @@ public class ApplicationStatusTransitionValidator {
         }
     }
 }
+

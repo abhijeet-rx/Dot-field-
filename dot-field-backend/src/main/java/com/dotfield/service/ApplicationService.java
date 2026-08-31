@@ -39,6 +39,9 @@ public class ApplicationService {
         Job job = jobRepository.findById(request.getJobId())
                 .orElseThrow(() -> new ResourceNotFoundException("Job not found with id: " + request.getJobId()));
 
+        // Issue 1: Validate that the requested creation status is allowed (only SAVED or APPLIED)
+        statusTransitionValidator.validateCreationStatus(request.getStatus());
+
         if (applicationRepository.existsByProfileIdAndJobId(profile.getId(), job.getId())) {
             throw new ConflictException("Application already exists for job id: " + job.getId());
         }
@@ -133,57 +136,52 @@ public class ApplicationService {
         log.info("User ID: {} deleted application ID: {}", userId, applicationId);
     }
 
+    /**
+     * Issue 4 & 5: Analytics computed via database aggregate queries.
+     * Applied base uses appliedAt IS NOT NULL (persisted timestamp) as source of truth,
+     * so that APPLIED->WITHDRAWN still counts as an applied application,
+     * while SAVED->WITHDRAWN does not.
+     */
     @Transactional(readOnly = true)
     public ApplicationAnalyticsResponse getAnalytics(Long userId) {
         Profile profile = findProfileByUserId(userId);
-        List<Application> applications = applicationRepository.findAllByProfileId(profile.getId());
+        Long profileId = profile.getId();
 
-        long total = applications.size();
+        // Issue 4: Use repository-level aggregate queries instead of loading all entities
+        long total = applicationRepository.countByProfileId(profileId);
+
         Map<ApplicationStatus, Long> counts = new EnumMap<>(ApplicationStatus.class);
         for (ApplicationStatus s : ApplicationStatus.values()) {
             counts.put(s, 0L);
         }
-
-        double sumFitScore = 0.0;
-        int fitCount = 0;
-
-        long respondedCount = 0;
-        long interviewCount = 0;
-        long offerCount = 0;
-        long appliedBaseCount = 0;
-
-        for (Application app : applications) {
-            counts.put(app.getStatus(), counts.getOrDefault(app.getStatus(), 0L) + 1);
-
-            if (app.getStatus() != ApplicationStatus.SAVED && app.getStatus() != ApplicationStatus.WITHDRAWN) {
-                appliedBaseCount++;
-            }
-
-            if (app.getStatus() == ApplicationStatus.SCREENING
-                    || app.getStatus() == ApplicationStatus.INTERVIEW
-                    || app.getStatus() == ApplicationStatus.OFFER
-                    || app.getStatus() == ApplicationStatus.REJECTED) {
-                respondedCount++;
-            }
-
-            if (app.getStatus() == ApplicationStatus.INTERVIEW || app.getStatus() == ApplicationStatus.OFFER) {
-                interviewCount++;
-            }
-
-            if (app.getStatus() == ApplicationStatus.OFFER) {
-                offerCount++;
-            }
-
-            if (app.getFitScore() != null) {
-                sumFitScore += app.getFitScore();
-                fitCount++;
-            }
+        List<Object[]> statusCountRows = applicationRepository.countByProfileIdGroupByStatus(profileId);
+        for (Object[] row : statusCountRows) {
+            ApplicationStatus status = (ApplicationStatus) row[0];
+            Long count = (Long) row[1];
+            counts.put(status, count);
         }
+
+        // Issue 5: Applied base = applications where appliedAt IS NOT NULL
+        // This correctly includes APPLIED->WITHDRAWN (had appliedAt set) and
+        // excludes SAVED->WITHDRAWN (never had appliedAt set).
+        long appliedBaseCount = applicationRepository.countByProfileIdAndAppliedAtIsNotNull(profileId);
+
+        // Responded = SCREENING + INTERVIEW + OFFER + REJECTED (employer acted on it)
+        long respondedCount = counts.getOrDefault(ApplicationStatus.SCREENING, 0L)
+                + counts.getOrDefault(ApplicationStatus.INTERVIEW, 0L)
+                + counts.getOrDefault(ApplicationStatus.OFFER, 0L)
+                + counts.getOrDefault(ApplicationStatus.REJECTED, 0L);
+
+        long interviewCount = counts.getOrDefault(ApplicationStatus.INTERVIEW, 0L)
+                + counts.getOrDefault(ApplicationStatus.OFFER, 0L);
+        long offerCount = counts.getOrDefault(ApplicationStatus.OFFER, 0L);
+
+        Double avgFitScoreRaw = applicationRepository.averageFitScoreByProfileId(profileId);
+        double avgFitScore = avgFitScoreRaw != null ? avgFitScoreRaw : 0.0;
 
         double responseRate = appliedBaseCount > 0 ? (double) respondedCount / appliedBaseCount * 100.0 : 0.0;
         double interviewRate = appliedBaseCount > 0 ? (double) interviewCount / appliedBaseCount * 100.0 : 0.0;
         double offerRate = appliedBaseCount > 0 ? (double) offerCount / appliedBaseCount * 100.0 : 0.0;
-        double avgFitScore = fitCount > 0 ? sumFitScore / fitCount : 0.0;
 
         return ApplicationAnalyticsResponse.builder()
                 .totalApplications(total)

@@ -11,6 +11,17 @@ const STAGES = [
   { key: 'WITHDRAWN', label: 'Withdrawn', color: '#64748b' }
 ];
 
+/**
+ * Kanban board for application tracking.
+ *
+ * Known limitation (Issue 9): The Kanban board receives the same paginated
+ * application list as the table view. When the total number of applications
+ * exceeds the page size (default 20), only the current page's applications
+ * are displayed across columns. This is acceptable at current scale and avoids
+ * introducing a separate non-paginated fetch path. If the application count
+ * grows large enough for this to be misleading, consider fetching all
+ * applications (with a reasonable cap) specifically for the Kanban view.
+ */
 export default function ApplicationKanban({ applications = [], onUpdateStatus, onUpdateNotes, onDelete }) {
   return (
     <div style={{

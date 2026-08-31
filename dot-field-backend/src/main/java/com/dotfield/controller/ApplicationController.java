@@ -24,6 +24,7 @@ import java.util.Set;
 public class ApplicationController {
 
     private static final Set<String> ALLOWED_SORT_FIELDS = Set.of("createdAt", "updatedAt", "appliedAt", "status");
+    private static final Set<String> ALLOWED_SORT_DIRECTIONS = Set.of("ASC", "DESC");
 
     private final ApplicationService applicationService;
     private final CurrentUserService currentUserService;
@@ -44,12 +45,23 @@ public class ApplicationController {
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "updatedAt") String sortBy,
             @RequestParam(defaultValue = "DESC") String sortDirection) {
+
+        // Issue 3: Validate pagination and sorting parameters
+        if (page < 0) {
+            throw new BadRequestException("Page index must be >= 0. Received: " + page);
+        }
+        if (size < 1 || size > 100) {
+            throw new BadRequestException("Page size must be between 1 and 100. Received: " + size);
+        }
         if (!ALLOWED_SORT_FIELDS.contains(sortBy)) {
             throw new BadRequestException("Invalid sort field: '" + sortBy + "'. Allowed sort fields are: " + ALLOWED_SORT_FIELDS);
         }
+        if (!ALLOWED_SORT_DIRECTIONS.contains(sortDirection.toUpperCase())) {
+            throw new BadRequestException("Invalid sort direction: '" + sortDirection + "'. Allowed values are: ASC, DESC");
+        }
 
         Long userId = currentUserService.getCurrentUserId();
-        Sort.Direction direction = sortDirection.equalsIgnoreCase("ASC") ? Sort.Direction.ASC : Sort.Direction.DESC;
+        Sort.Direction direction = Sort.Direction.fromString(sortDirection.toUpperCase());
         Pageable pageable = PageRequest.of(page, size, Sort.by(direction, sortBy));
         PagedResponse<ApplicationResponse> response = applicationService.getApplications(userId, status, search, pageable);
         return ResponseEntity.ok(ApiResponse.success(response));

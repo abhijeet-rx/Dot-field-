@@ -34,4 +34,16 @@ public interface ApplicationRepository extends JpaRepository<Application, Long> 
     boolean existsByProfileIdAndJobId(Long profileId, Long jobId);
 
     List<Application> findAllByProfileId(Long profileId);
+
+    // --- Aggregate queries for analytics (Issue 4) ---
+
+    long countByProfileId(Long profileId);
+
+    @Query("SELECT a.status, COUNT(a) FROM Application a WHERE a.profile.id = :profileId GROUP BY a.status")
+    List<Object[]> countByProfileIdGroupByStatus(@Param("profileId") Long profileId);
+
+    long countByProfileIdAndAppliedAtIsNotNull(Long profileId);
+
+    @Query("SELECT AVG(a.fitScore) FROM Application a WHERE a.profile.id = :profileId AND a.fitScore IS NOT NULL")
+    Double averageFitScoreByProfileId(@Param("profileId") Long profileId);
 }

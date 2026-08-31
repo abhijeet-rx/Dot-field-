@@ -12,6 +12,17 @@ import ApplicationKanban from '../components/ApplicationKanban';
 
 const STATUS_OPTIONS = ['', 'SAVED', 'APPLIED', 'SCREENING', 'INTERVIEW', 'OFFER', 'REJECTED', 'WITHDRAWN'];
 
+// Issue 2: Lifecycle-aware status transitions for table view dropdown
+const VALID_TRANSITIONS = {
+  SAVED:     ['SAVED', 'APPLIED', 'WITHDRAWN'],
+  APPLIED:   ['APPLIED', 'SCREENING', 'INTERVIEW', 'OFFER', 'REJECTED', 'WITHDRAWN'],
+  SCREENING: ['SCREENING', 'INTERVIEW', 'OFFER', 'REJECTED', 'WITHDRAWN'],
+  INTERVIEW: ['INTERVIEW', 'OFFER', 'REJECTED', 'WITHDRAWN'],
+  OFFER:     ['OFFER', 'WITHDRAWN'],
+  REJECTED:  ['REJECTED'],
+  WITHDRAWN: ['WITHDRAWN']
+};
+
 export default function Applications() {
   const [applications, setApplications] = useState([]);
   const [analytics, setAnalytics] = useState(null);
@@ -205,7 +216,7 @@ export default function Applications() {
                           className="filter-select"
                           style={{ fontSize: '0.8rem' }}
                         >
-                          {STATUS_OPTIONS.filter(Boolean).map(s => (
+                          {(VALID_TRANSITIONS[app.status] || [app.status]).map(s => (
                             <option key={s} value={s}>{s}</option>
                           ))}
                         </select>
