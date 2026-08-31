@@ -53,25 +53,20 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
     @Value("${job.ingestion.freshness.threshold-days:7}")
     private int freshnessThresholdDays = 7;
 
+    public boolean isIngestionRunning() {
+        return ingestionRunning.get();
+    }
+
     /**
-     * Controlled manual ingestion trigger with concurrency prevention.
+     * Controlled manual ingestion trigger with shared concurrency prevention.
      */
     public JobIngestionRunResponse runManualIngestion(JobDiscoveryRequest request) {
-        if (!ingestionRunning.compareAndSet(false, true)) {
-            log.warn("Manual job ingestion trigger rejected — an ingestion run is already active");
-            throw new ConflictException("Job ingestion run is already in progress. Please wait for the current run to complete.");
-        }
+        JobDiscoveryRequest req = (request != null && request.getSource() != null && !request.getSource().isBlank())
+                ? request
+                : JobDiscoveryRequest.builder().source("ALL").build();
 
-        try {
-            JobDiscoveryRequest req = (request != null && request.getSource() != null && !request.getSource().isBlank())
-                    ? request
-                    : JobDiscoveryRequest.builder().source("ALL").build();
-
-            JobDiscoveryResponse response = discoverJobs(req);
-            return JobIngestionRunResponse.fromJobDiscoveryResponse(response);
-        } finally {
-            ingestionRunning.set(false);
-        }
+        JobDiscoveryResponse response = discoverJobs(req);
+        return JobIngestionRunResponse.fromJobDiscoveryResponse(response);
     }
 
     public IngestionStatusResponse getIngestionStatus() {
@@ -88,10 +83,31 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
             throw new BadRequestException("maxResults must be between 1 and 100");
         }
 
-        if ("ALL".equalsIgnoreCase(request.getSource().trim())) {
-            return discoverFromAllSources(request);
+        if (!ingestionRunning.compareAndSet(false, true)) {
+            log.warn("Job ingestion request rejected — an ingestion run is already active");
+            throw new ConflictException("Job ingestion run is already in progress. Please wait for the current run to complete.");
         }
 
+        try {
+            if ("ALL".equalsIgnoreCase(request.getSource().trim())) {
+                return performDiscoverFromAllSources(request);
+            }
+            return performDiscoverSingleSource(request);
+        } finally {
+            ingestionRunning.set(false);
+        }
+    }
+
+    @Override
+    public JobDiscoveryResponse discoverFromAllSources(JobDiscoveryRequest request) {
+        JobDiscoveryRequest req = (request != null && request.getSource() != null && !request.getSource().isBlank())
+                ? request
+                : JobDiscoveryRequest.builder().source("ALL").build();
+
+        return discoverJobs(req);
+    }
+
+    private JobDiscoveryResponse performDiscoverSingleSource(JobDiscoveryRequest request) {
         long startTime = System.currentTimeMillis();
         LocalDateTime runTimestamp = LocalDateTime.now();
 
@@ -118,8 +134,7 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
      * Executes job discovery across ALL registered job sources with error isolation per source.
      * A failure in one source is logged and reported without halting other sources.
      */
-    @Override
-    public JobDiscoveryResponse discoverFromAllSources(JobDiscoveryRequest request) {
+    private JobDiscoveryResponse performDiscoverFromAllSources(JobDiscoveryRequest request) {
         long startTime = System.currentTimeMillis();
         LocalDateTime runTimestamp = LocalDateTime.now();
 

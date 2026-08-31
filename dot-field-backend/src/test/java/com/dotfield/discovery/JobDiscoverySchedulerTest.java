@@ -42,7 +42,6 @@ class JobDiscoverySchedulerTest {
         assertNotNull(response);
         assertEquals(10, response.getDiscovered());
         assertEquals(5, response.getNewJobs());
-        assertFalse(scheduler.getIsRunning().get());
 
         verify(orchestrator, times(1)).ingestFromAllSources(argThat(req ->
                 "ALL".equals(req.getSource()) && req.getMaxResults() == 50
@@ -50,27 +49,26 @@ class JobDiscoverySchedulerTest {
     }
 
     @Test
-    @DisplayName("Concurrency Strategy — Overlapping execution skips second run when already running")
-    void runScheduledIngestion_overlappingExecution_skipsSecondRun() {
-        scheduler.getIsRunning().set(true);
+    @DisplayName("Concurrency Strategy — Overlapping execution skips scheduled run when ConflictException thrown by orchestrator")
+    void runScheduledIngestion_conflictException_skipsRun() {
+        when(orchestrator.ingestFromAllSources(any(JobDiscoveryRequest.class)))
+                .thenThrow(new com.dotfield.exception.ConflictException("Job ingestion run is already in progress."));
 
         JobDiscoveryResponse response = scheduler.runScheduledIngestion();
 
         assertNull(response);
-        verify(orchestrator, never()).ingestFromAllSources(any());
-        assertTrue(scheduler.getIsRunning().get()); // remains set by original caller
+        verify(orchestrator, times(1)).ingestFromAllSources(any());
     }
 
     @Test
-    @DisplayName("Scheduler Recovery — Unhandled exception is caught and resets isRunning state for future runs")
-    void runScheduledIngestion_unhandledException_logsAndResetsIsRunningState() {
+    @DisplayName("Scheduler Recovery — Unhandled exception is caught and subsequent run can execute")
+    void runScheduledIngestion_unhandledException_logsAndRecovers() {
         when(orchestrator.ingestFromAllSources(any(JobDiscoveryRequest.class)))
                 .thenThrow(new RuntimeException("Database connection timeout"));
 
         JobDiscoveryResponse response = scheduler.runScheduledIngestion();
 
         assertNull(response);
-        assertFalse(scheduler.getIsRunning().get()); // verified reset for future runs
 
         // Subsequent run works cleanly
         JobDiscoveryResponse successResponse = JobDiscoveryResponse.builder().discovered(2).build();

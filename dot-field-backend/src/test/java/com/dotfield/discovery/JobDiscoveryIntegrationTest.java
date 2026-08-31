@@ -85,38 +85,32 @@ class JobDiscoveryIntegrationTest {
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CyclicBarrier barrier = new CyclicBarrier(2);
 
-        Callable<JobDiscoveryResponse> task = () -> {
+        Callable<Object> task = () -> {
             barrier.await(5, TimeUnit.SECONDS);
-            return discoveryService.discoverJobs(request);
+            try {
+                return discoveryService.discoverJobs(request);
+            } catch (com.dotfield.exception.ConflictException e) {
+                return e;
+            }
         };
 
-        Future<JobDiscoveryResponse> future1 = executor.submit(task);
-        Future<JobDiscoveryResponse> future2 = executor.submit(task);
+        Future<Object> future1 = executor.submit(task);
+        Future<Object> future2 = executor.submit(task);
 
-        JobDiscoveryResponse r1 = future1.get(10, TimeUnit.SECONDS);
-        JobDiscoveryResponse r2 = future2.get(10, TimeUnit.SECONDS);
+        Object o1 = future1.get(10, TimeUnit.SECONDS);
+        Object o2 = future2.get(10, TimeUnit.SECONDS);
 
         executor.shutdown();
 
-        // Combined: exactly 1 new + 1 unchanged (or 0 new + 2 unchanged if one was slower)
-        int totalNew = r1.getNewJobs() + r2.getNewJobs();
-        int totalUnchanged = r1.getUnchangedJobs() + r2.getUnchangedJobs();
-        int totalUpdated = r1.getUpdatedJobs() + r2.getUpdatedJobs();
+        boolean oneSucceededOneConflict = (o1 instanceof JobDiscoveryResponse && o2 instanceof com.dotfield.exception.ConflictException)
+                || (o2 instanceof JobDiscoveryResponse && o1 instanceof com.dotfield.exception.ConflictException);
+        assertTrue(oneSucceededOneConflict, "One concurrent request must succeed and the other must fail with ConflictException");
 
-        // At most 1 new job should have been created
-        assertTrue(totalNew <= 1, "At most 1 new job should be created, got " + totalNew);
-
-        // Exactly 1 row in the database
         List<Job> allJobs = jobRepository.findAll();
         long distinctCount = allJobs.stream()
                 .filter(j -> "JOB-CW-101".equals(j.getExternalId()))
                 .count();
-        assertEquals(1, distinctCount,
-                "Exactly one job row with externalId JOB-CW-101 should exist");
-
-        // No failures
-        assertEquals(0, r1.getFailed());
-        assertEquals(0, r2.getFailed());
+        assertEquals(1, distinctCount, "Exactly one job row with externalId JOB-CW-101 should exist");
     }
 
     /**
@@ -124,6 +118,7 @@ class JobDiscoveryIntegrationTest {
      */
     @Test
     void discoveryRefresh_preservesExistingUserStatus() {
+        LocalDateTime now = LocalDateTime.now();
         // Pre-create a job with APPLIED status
         Job existingJob = Job.builder()
                 .externalId("JOB-CW-101")
@@ -134,6 +129,9 @@ class JobDiscoveryIntegrationTest {
                 .jobUrl("https://acme.com/careers/jobs/101")
                 .source("COMPANY_WEBSITE")
                 .status(JobStatus.APPLIED)
+                .firstSeenAt(now)
+                .lastSeenAt(now)
+                .lastDiscoveredAt(now)
                 .build();
         jobRepository.save(existingJob);
 

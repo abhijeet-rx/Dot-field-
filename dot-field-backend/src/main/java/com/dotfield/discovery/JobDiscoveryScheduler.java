@@ -33,9 +33,6 @@ public class JobDiscoveryScheduler {
 
     private final JobIngestionOrchestrator orchestrator;
 
-    @Getter
-    private final AtomicBoolean isRunning = new AtomicBoolean(false);
-
     @Value("${job.ingestion.scheduler.max-results:50}")
     private int maxResults = 50;
 
@@ -44,11 +41,6 @@ public class JobDiscoveryScheduler {
             initialDelayString = "${job.ingestion.scheduler.initial-delay-ms:60000}"
     )
     public JobDiscoveryResponse runScheduledIngestion() {
-        if (!isRunning.compareAndSet(false, true)) {
-            log.warn("Scheduled job ingestion skipped — a previous execution is still running.");
-            return null;
-        }
-
         try {
             log.info("Starting scheduled background job ingestion across all sources...");
             JobDiscoveryRequest request = JobDiscoveryRequest.builder()
@@ -67,11 +59,12 @@ public class JobDiscoveryScheduler {
                     response.getFailed());
 
             return response;
+        } catch (com.dotfield.exception.ConflictException e) {
+            log.warn("Scheduled job ingestion skipped — an ingestion run is already active: {}", e.getMessage());
+            return null;
         } catch (Exception e) {
             log.error("Unhandled exception during scheduled job ingestion execution", e);
             return null;
-        } finally {
-            isRunning.set(false);
         }
     }
 }
