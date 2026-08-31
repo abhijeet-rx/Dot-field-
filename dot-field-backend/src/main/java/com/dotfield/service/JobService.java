@@ -23,6 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 
+import com.dotfield.discovery.JobDeduplicationService;
+
 @Slf4j
 @Service
 @Transactional
@@ -31,11 +33,20 @@ public class JobService {
 
     private final JobRepository jobRepository;
     private final JobMapper jobMapper;
+    private final JobDeduplicationService deduplicationService;
 
     public JobResponse createJob(CreateJobRequest request) {
         validateSalaryRange(request.getSalaryMin(), request.getSalaryMax());
 
         Job job = jobMapper.toEntity(request);
+        if (job.getJobUrl() != null && !job.getJobUrl().isBlank()) {
+            job.setCanonicalUrl(deduplicationService.canonicalizeUrl(job.getJobUrl()));
+        }
+        if (job.getDeduplicationFingerprint() == null) {
+            job.setDeduplicationFingerprint(deduplicationService.generateFingerprint(
+                    job.getCompany(), job.getTitle(), job.getLocation(), job.getDescription()
+            ));
+        }
         Job savedJob = jobRepository.save(job);
         log.info("Created job opportunity with ID: {}", savedJob.getId());
         return jobMapper.toJobResponse(savedJob);
@@ -67,6 +78,12 @@ public class JobService {
         validateSalaryRange(request.getSalaryMin(), request.getSalaryMax());
 
         jobMapper.updateEntityFromRequest(request, job);
+        if (job.getJobUrl() != null && !job.getJobUrl().isBlank()) {
+            job.setCanonicalUrl(deduplicationService.canonicalizeUrl(job.getJobUrl()));
+        }
+        job.setDeduplicationFingerprint(deduplicationService.generateFingerprint(
+                job.getCompany(), job.getTitle(), job.getLocation(), job.getDescription()
+        ));
         Job updatedJob = jobRepository.save(job);
         log.info("Updated job opportunity ID: {}", id);
         return jobMapper.toJobResponse(updatedJob);

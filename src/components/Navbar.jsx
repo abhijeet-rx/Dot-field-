@@ -7,7 +7,6 @@ export default function Navbar() {
   const { isAuthenticated, user, logout } = useAuth();
   const isDashboard = location.pathname.startsWith('/dashboard');
   const isLogin = location.pathname === '/login';
-  const isRegister = location.pathname === '/register';
 
   return (
     <header className="navbar">

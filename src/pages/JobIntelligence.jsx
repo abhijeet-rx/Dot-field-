@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { fetchJob, fetchJobMatch, fetchTailoredResume } from '../api/client';
 import MatchScoreRing from '../components/MatchScoreRing';
@@ -56,11 +56,7 @@ export default function JobIntelligence() {
   const [errorMatch, setErrorMatch] = useState(null);
   const [errorResume, setErrorResume] = useState(null);
 
-  useEffect(() => {
-    loadJobData();
-  }, [id]);
-
-  async function loadJobData() {
+  const loadJobData = useCallback(async () => {
     setLoadingJob(true);
     setLoadingMatch(true);
     setErrorJob(null);
@@ -83,7 +79,11 @@ export default function JobIntelligence() {
     } finally {
       setLoadingMatch(false);
     }
-  }
+  }, [id]);
+
+  useEffect(() => {
+    loadJobData();
+  }, [loadJobData]);
 
   async function handleTailorResume() {
     setResumeRequested(true);

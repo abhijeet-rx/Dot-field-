@@ -41,6 +41,9 @@ class JobServiceTest {
     @Mock
     private JobRepository jobRepository;
 
+    @Mock
+    private com.dotfield.discovery.JobDeduplicationService deduplicationService;
+
     @Spy
     private JobMapper jobMapper;
 

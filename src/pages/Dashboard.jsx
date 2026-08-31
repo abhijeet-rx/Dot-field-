@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { fetchJobs } from '../api/client';
 
@@ -59,11 +59,7 @@ export default function Dashboard() {
   const [source, setSource] = useState('');
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  useEffect(() => {
-    loadJobs();
-  }, [page, status, company, source, remoteType, employmentType]);
-
-  async function loadJobs() {
+  const loadJobs = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -77,7 +73,11 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [page, status, company, source, remoteType, employmentType]);
+
+  useEffect(() => {
+    loadJobs();
+  }, [loadJobs]);
 
   function clearFilters() {
     setCompany('');

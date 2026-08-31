@@ -132,6 +132,54 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * Handle malformed JSON body → 400.
+     */
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiError> handleMessageNotReadable(Exception ex) {
+        log.warn("Malformed JSON request payload: {}", ex.getMessage());
+
+        ApiError error = ApiError.builder()
+                .status(HttpStatus.BAD_REQUEST.value())
+                .message("Malformed JSON request payload")
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+    }
+
+    /**
+     * Handle unsupported HTTP methods → 405.
+     */
+    @ExceptionHandler(org.springframework.web.HttpRequestMethodNotSupportedException.class)
+    public ResponseEntity<ApiError> handleMethodNotSupported(org.springframework.web.HttpRequestMethodNotSupportedException ex) {
+        log.warn("HTTP method not supported: {}", ex.getMessage());
+
+        ApiError error = ApiError.builder()
+                .status(HttpStatus.METHOD_NOT_ALLOWED.value())
+                .message("HTTP method '" + ex.getMethod() + "' is not supported for this endpoint")
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.METHOD_NOT_ALLOWED).body(error);
+    }
+
+    /**
+     * Handle database data integrity / conflict exceptions → 409.
+     */
+    @ExceptionHandler(org.springframework.dao.DataIntegrityViolationException.class)
+    public ResponseEntity<ApiError> handleDataIntegrityViolation(org.springframework.dao.DataIntegrityViolationException ex) {
+        log.warn("Data integrity conflict: {}", ex.getMessage());
+
+        ApiError error = ApiError.builder()
+                .status(HttpStatus.CONFLICT.value())
+                .message("Data conflict or constraint violation occurred")
+                .timestamp(LocalDateTime.now())
+                .build();
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(error);
+    }
+
+    /**
      * Handle Spring's NoResourceFoundException (e.g., unknown static paths) → 404.
      */
     @ExceptionHandler(NoResourceFoundException.class)
