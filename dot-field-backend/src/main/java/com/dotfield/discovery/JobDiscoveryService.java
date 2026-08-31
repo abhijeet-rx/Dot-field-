@@ -19,8 +19,9 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 /**
- * Orchestrates job discovery: resolves source adapters, invokes the shared
- * extraction pipeline, deduplicates, and persists results.
+ * Orchestrates job ingestion across single or multiple registered job sources.
+ * Resolves source adapters, invokes the shared extraction pipeline, deduplicates,
+ * and persists results with strict error isolation per source.
  * <p>
  * This class is intentionally NOT {@code @Transactional} at the class level.
  * Each listing is persisted in its own {@code REQUIRES_NEW} transaction via
@@ -30,7 +31,7 @@ import java.util.*;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class JobDiscoveryService {
+public class JobDiscoveryService implements JobIngestionOrchestrator {
 
     private final JobSourceRegistry sourceRegistry;
     private final JobExtractionPipeline extractionPipeline;
@@ -38,6 +39,7 @@ public class JobDiscoveryService {
     private final JobDiscoveryPersistenceHelper persistenceHelper;
     private final JobRepository jobRepository;
 
+    @Override
     public JobDiscoveryResponse discoverJobs(JobDiscoveryRequest request) {
         if (request == null || request.getSource() == null || request.getSource().isBlank()) {
             throw new BadRequestException("Source is required");
@@ -47,45 +49,89 @@ public class JobDiscoveryService {
             throw new BadRequestException("maxResults must be between 1 and 100");
         }
 
+        if ("ALL".equalsIgnoreCase(request.getSource().trim())) {
+            return discoverFromAllSources(request);
+        }
+
         JobSource source = sourceRegistry.getRequiredSource(request.getSource());
+        SourceDiscoveryResult result = processSingleSource(source, request);
+
+        return JobDiscoveryResponse.builder()
+                .discovered(result.getDiscovered())
+                .newJobs(result.getNewJobs())
+                .updatedJobs(result.getUpdatedJobs())
+                .unchangedJobs(result.getUnchangedJobs())
+                .duplicates(result.getDuplicates())
+                .failed(result.getFailed())
+                .sourceResults(List.of(result))
+                .build();
+    }
+
+    /**
+     * Executes job discovery across ALL registered job sources with error isolation per source.
+     * A failure in one source is logged and reported without halting other sources.
+     */
+    @Override
+    public JobDiscoveryResponse discoverFromAllSources(JobDiscoveryRequest request) {
+        List<JobSource> sources = sourceRegistry.getAllSources();
+        List<SourceDiscoveryResult> sourceResults = new ArrayList<>();
 
         int totalDiscovered = 0;
+        int totalNewJobs = 0;
+        int totalUpdatedJobs = 0;
+        int totalUnchangedJobs = 0;
+        int totalDuplicates = 0;
+        int totalFailed = 0;
+
+        for (JobSource source : sources) {
+            SourceDiscoveryResult result = processSingleSource(source, request);
+            sourceResults.add(result);
+
+            totalDiscovered += result.getDiscovered();
+            totalNewJobs += result.getNewJobs();
+            totalUpdatedJobs += result.getUpdatedJobs();
+            totalUnchangedJobs += result.getUnchangedJobs();
+            totalDuplicates += result.getDuplicates();
+            totalFailed += result.getFailed();
+        }
+
+        return JobDiscoveryResponse.builder()
+                .discovered(totalDiscovered)
+                .newJobs(totalNewJobs)
+                .updatedJobs(totalUpdatedJobs)
+                .unchangedJobs(totalUnchangedJobs)
+                .duplicates(totalDuplicates)
+                .failed(totalFailed)
+                .sourceResults(sourceResults)
+                .build();
+    }
+
+    private SourceDiscoveryResult processSingleSource(JobSource source, JobDiscoveryRequest request) {
+        List<RawJobListing> rawListings;
+        try {
+            rawListings = source.discover(request);
+        } catch (Exception e) {
+            log.error("Failed to discover jobs from source: {}", source.getSourceName(), e);
+            return SourceDiscoveryResult.builder()
+                    .source(source.getSourceName())
+                    .status("FAILED")
+                    .errorMessage(e.getMessage())
+                    .discovered(0)
+                    .failed(1)
+                    .build();
+        }
+
+        int totalDiscovered = rawListings.size();
         int newJobs = 0;
         int updatedJobs = 0;
         int unchangedJobs = 0;
         int duplicates = 0;
         int failed = 0;
 
-        List<RawJobListing> rawListings;
-        try {
-            rawListings = source.discover(request);
-        } catch (Exception e) {
-            log.error("Failed to discover jobs from source: {}", source.getSourceName(), e);
-            // Source-level failure: no listings were retrieved.
-            // Do NOT delete existing jobs or mark them expired.
-            return JobDiscoveryResponse.builder()
-                    .discovered(0)
-                    .newJobs(0)
-                    .updatedJobs(0)
-                    .unchangedJobs(0)
-                    .duplicates(0)
-                    .failed(1)
-                    .sourceResults(List.of(SourceDiscoveryResult.builder()
-                            .source(source.getSourceName())
-                            .discovered(0)
-                            .failed(1)
-                            .build()))
-                    .build();
-        }
-
-        totalDiscovered = rawListings.size();
-
-        // Track within-batch externalIds to detect batch-level duplicates
         Set<String> seenExternalIds = new HashSet<>();
 
         for (RawJobListing rawListing : rawListings) {
             try {
-                // Detect within-batch duplicates by externalId
                 if (rawListing.getExternalId() != null && !rawListing.getExternalId().isBlank()) {
                     if (!seenExternalIds.add(rawListing.getExternalId().trim())) {
                         log.debug("Within-batch duplicate detected for externalId: {}", rawListing.getExternalId());
@@ -106,27 +152,18 @@ public class JobDiscoveryService {
             }
         }
 
-        SourceDiscoveryResult sourceResult = SourceDiscoveryResult.builder()
-                .source(source.getSourceName())
-                .discovered(totalDiscovered)
-                .newJobs(newJobs)
-                .updatedJobs(updatedJobs)
-                .unchangedJobs(unchangedJobs)
-                .duplicates(duplicates)
-                .failed(failed)
-                .build();
-
         log.info("Job discovery completed for source: {} -> Discovered: {}, New: {}, Updated: {}, Unchanged: {}, Duplicates: {}, Failed: {}",
                 source.getSourceName(), totalDiscovered, newJobs, updatedJobs, unchangedJobs, duplicates, failed);
 
-        return JobDiscoveryResponse.builder()
+        return SourceDiscoveryResult.builder()
+                .source(source.getSourceName())
+                .status("SUCCESS")
                 .discovered(totalDiscovered)
                 .newJobs(newJobs)
                 .updatedJobs(updatedJobs)
                 .unchangedJobs(unchangedJobs)
                 .duplicates(duplicates)
                 .failed(failed)
-                .sourceResults(List.of(sourceResult))
                 .build();
     }
 
@@ -190,7 +227,7 @@ public class JobDiscoveryService {
                 .source(extractedJob.getSource())
                 .employmentType(extractedJob.getEmploymentType())
                 .remoteType(extractedJob.getRemoteType())
-                .status(JobStatus.SAVED) // Default state for newly discovered job
+                .status(JobStatus.SAVED)
                 .salaryMin(extractedJob.getSalaryMin())
                 .salaryMax(extractedJob.getSalaryMax())
                 .currency(extractedJob.getCurrency())
@@ -202,8 +239,6 @@ public class JobDiscoveryService {
             persistenceHelper.saveNewJob(newJob);
             return ProcessResult.NEW;
         } catch (org.springframework.dao.DataIntegrityViolationException e) {
-            // Concurrent duplicate: the REQUIRES_NEW transaction already rolled back.
-            // Re-fetch existing record in a clean context.
             log.info("Concurrent duplicate detected. Re-fetching existing job for source={}, externalId={}, canonicalUrl={}",
                     extractedJob.getSource(), rawListing.getExternalId(), canonicalUrl);
 
@@ -225,8 +260,6 @@ public class JobDiscoveryService {
                 return changed ? ProcessResult.UPDATED : ProcessResult.UNCHANGED;
             }
 
-            // Extremely unlikely: constraint violation but cannot re-fetch.
-            // Treat as unchanged to avoid data loss.
             log.warn("Could not re-fetch job after constraint violation. source={}, externalId={}",
                     extractedJob.getSource(), rawListing.getExternalId());
             return ProcessResult.UNCHANGED;
@@ -236,64 +269,62 @@ public class JobDiscoveryService {
     private boolean updateJobFieldsIfChanged(Job job, ExtractedJob extracted, String externalId, String canonicalUrl, String fingerprint) {
         boolean changed = false;
 
-        if (!Objects.equals(job.getExternalId(), externalId)) {
+        if (externalId != null && !externalId.isBlank() && !Objects.equals(job.getExternalId(), externalId)) {
             job.setExternalId(externalId);
             changed = true;
         }
-        if (!Objects.equals(job.getTitle(), extracted.getTitle())) {
+        if (extracted.getTitle() != null && !extracted.getTitle().isBlank() && !Objects.equals(job.getTitle(), extracted.getTitle())) {
             job.setTitle(extracted.getTitle());
             changed = true;
         }
-        if (!Objects.equals(job.getCompany(), extracted.getCompany())) {
+        if (extracted.getCompany() != null && !extracted.getCompany().isBlank() && !Objects.equals(job.getCompany(), extracted.getCompany())) {
             job.setCompany(extracted.getCompany());
             changed = true;
         }
-        if (!Objects.equals(job.getLocation(), extracted.getLocation())) {
+        if (extracted.getLocation() != null && !extracted.getLocation().isBlank() && !Objects.equals(job.getLocation(), extracted.getLocation())) {
             job.setLocation(extracted.getLocation());
             changed = true;
         }
-        if (!Objects.equals(job.getDescription(), extracted.getDescription())) {
+        if (extracted.getDescription() != null && !extracted.getDescription().isBlank() && !Objects.equals(job.getDescription(), extracted.getDescription())) {
             job.setDescription(extracted.getDescription());
             changed = true;
         }
-        if (!Objects.equals(job.getJobUrl(), extracted.getJobUrl())) {
+        if (extracted.getJobUrl() != null && !extracted.getJobUrl().isBlank() && !Objects.equals(job.getJobUrl(), extracted.getJobUrl())) {
             job.setJobUrl(extracted.getJobUrl());
             changed = true;
         }
-        if (!Objects.equals(job.getCanonicalUrl(), canonicalUrl)) {
+        if (canonicalUrl != null && !canonicalUrl.isBlank() && !Objects.equals(job.getCanonicalUrl(), canonicalUrl)) {
             job.setCanonicalUrl(canonicalUrl);
             changed = true;
         }
-        if (!Objects.equals(job.getDeduplicationFingerprint(), fingerprint)) {
+        if (fingerprint != null && !fingerprint.isBlank() && !Objects.equals(job.getDeduplicationFingerprint(), fingerprint)) {
             job.setDeduplicationFingerprint(fingerprint);
             changed = true;
         }
-        if (!Objects.equals(job.getEmploymentType(), extracted.getEmploymentType())) {
+        if (extracted.getEmploymentType() != null && !Objects.equals(job.getEmploymentType(), extracted.getEmploymentType())) {
             job.setEmploymentType(extracted.getEmploymentType());
             changed = true;
         }
-        if (!Objects.equals(job.getRemoteType(), extracted.getRemoteType())) {
+        if (extracted.getRemoteType() != null && !Objects.equals(job.getRemoteType(), extracted.getRemoteType())) {
             job.setRemoteType(extracted.getRemoteType());
             changed = true;
         }
-        if (!Objects.equals(job.getSalaryMin(), extracted.getSalaryMin())) {
+        if (extracted.getSalaryMin() != null && !Objects.equals(job.getSalaryMin(), extracted.getSalaryMin())) {
             job.setSalaryMin(extracted.getSalaryMin());
             changed = true;
         }
-        if (!Objects.equals(job.getSalaryMax(), extracted.getSalaryMax())) {
+        if (extracted.getSalaryMax() != null && !Objects.equals(job.getSalaryMax(), extracted.getSalaryMax())) {
             job.setSalaryMax(extracted.getSalaryMax());
             changed = true;
         }
-        if (!Objects.equals(job.getCurrency(), extracted.getCurrency())) {
+        if (extracted.getCurrency() != null && !extracted.getCurrency().isBlank() && !Objects.equals(job.getCurrency(), extracted.getCurrency())) {
             job.setCurrency(extracted.getCurrency());
             changed = true;
         }
-        if (!Objects.equals(job.getPostedDate(), extracted.getPostedDate())) {
+        if (extracted.getPostedDate() != null && !Objects.equals(job.getPostedDate(), extracted.getPostedDate())) {
             job.setPostedDate(extracted.getPostedDate());
             changed = true;
         }
-
-        // CRITICAL: job.getStatus() is NEVER modified here! Candidate status is preserved.
 
         return changed;
     }

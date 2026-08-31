@@ -12,6 +12,9 @@ import lombok.NoArgsConstructor;
 public class SourceDiscoveryResult {
 
     private String source;
+    @Builder.Default
+    private String status = "SUCCESS";
+    private String errorMessage;
     private int discovered;
     private int newJobs;
     private int updatedJobs;

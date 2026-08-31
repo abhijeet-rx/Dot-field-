@@ -6,13 +6,18 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import lombok.experimental.SuperBuilder;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Map;
 
+/**
+ * Source-independent representation of a raw job listing fetched from an external source.
+ * This class is decoupled from the JPA Job entity.
+ */
 @Data
-@Builder
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 public class RawJobListing {
@@ -32,4 +37,17 @@ public class RawJobListing {
     private LocalDate postedDate;
     private Map<String, Object> rawData;
 
+    /**
+     * Alias getter for postedDate.
+     */
+    public LocalDate getPostedAt() {
+        return postedDate;
+    }
+
+    /**
+     * Alias setter for postedDate.
+     */
+    public void setPostedAt(LocalDate postedAt) {
+        this.postedDate = postedAt;
+    }
 }
