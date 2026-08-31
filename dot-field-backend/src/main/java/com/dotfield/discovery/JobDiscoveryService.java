@@ -13,10 +13,17 @@ import com.dotfield.extractor.JobExtractionPipeline;
 import com.dotfield.repository.JobRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import lombok.Setter;
 import org.springframework.stereotype.Service;
+
+import com.dotfield.dto.IngestionStatusResponse;
+import com.dotfield.dto.JobIngestionRunResponse;
+import com.dotfield.exception.ConflictException;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Orchestrates job ingestion across single or multiple registered job sources.
@@ -38,6 +45,38 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
     private final JobDeduplicationService deduplicationService;
     private final JobDiscoveryPersistenceHelper persistenceHelper;
     private final JobRepository jobRepository;
+    private final JobIngestionMonitor ingestionMonitor;
+
+    private final AtomicBoolean ingestionRunning = new AtomicBoolean(false);
+
+    @Setter
+    @Value("${job.ingestion.freshness.threshold-days:7}")
+    private int freshnessThresholdDays = 7;
+
+    /**
+     * Controlled manual ingestion trigger with concurrency prevention.
+     */
+    public JobIngestionRunResponse runManualIngestion(JobDiscoveryRequest request) {
+        if (!ingestionRunning.compareAndSet(false, true)) {
+            log.warn("Manual job ingestion trigger rejected — an ingestion run is already active");
+            throw new ConflictException("Job ingestion run is already in progress. Please wait for the current run to complete.");
+        }
+
+        try {
+            JobDiscoveryRequest req = (request != null && request.getSource() != null && !request.getSource().isBlank())
+                    ? request
+                    : JobDiscoveryRequest.builder().source("ALL").build();
+
+            JobDiscoveryResponse response = discoverJobs(req);
+            return JobIngestionRunResponse.fromJobDiscoveryResponse(response);
+        } finally {
+            ingestionRunning.set(false);
+        }
+    }
+
+    public IngestionStatusResponse getIngestionStatus() {
+        return ingestionMonitor.getCurrentStatus();
+    }
 
     @Override
     public JobDiscoveryResponse discoverJobs(JobDiscoveryRequest request) {
@@ -53,10 +92,13 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
             return discoverFromAllSources(request);
         }
 
+        long startTime = System.currentTimeMillis();
+        LocalDateTime runTimestamp = LocalDateTime.now();
+
         JobSource source = sourceRegistry.getRequiredSource(request.getSource());
         SourceDiscoveryResult result = processSingleSource(source, request);
 
-        return JobDiscoveryResponse.builder()
+        JobDiscoveryResponse response = JobDiscoveryResponse.builder()
                 .discovered(result.getDiscovered())
                 .newJobs(result.getNewJobs())
                 .updatedJobs(result.getUpdatedJobs())
@@ -65,6 +107,11 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
                 .failed(result.getFailed())
                 .sourceResults(List.of(result))
                 .build();
+
+        long durationMs = System.currentTimeMillis() - startTime;
+        ingestionMonitor.recordRun(response, durationMs, runTimestamp);
+
+        return response;
     }
 
     /**
@@ -73,6 +120,9 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
      */
     @Override
     public JobDiscoveryResponse discoverFromAllSources(JobDiscoveryRequest request) {
+        long startTime = System.currentTimeMillis();
+        LocalDateTime runTimestamp = LocalDateTime.now();
+
         List<JobSource> sources = sourceRegistry.getAllSources();
         List<SourceDiscoveryResult> sourceResults = new ArrayList<>();
 
@@ -95,7 +145,7 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
             totalFailed += result.getFailed();
         }
 
-        return JobDiscoveryResponse.builder()
+        JobDiscoveryResponse response = JobDiscoveryResponse.builder()
                 .discovered(totalDiscovered)
                 .newJobs(totalNewJobs)
                 .updatedJobs(totalUpdatedJobs)
@@ -104,6 +154,11 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
                 .failed(totalFailed)
                 .sourceResults(sourceResults)
                 .build();
+
+        long durationMs = System.currentTimeMillis() - startTime;
+        ingestionMonitor.recordRun(response, durationMs, runTimestamp);
+
+        return response;
     }
 
     private SourceDiscoveryResult processSingleSource(JobSource source, JobDiscoveryRequest request) {
@@ -155,6 +210,8 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
         log.info("Job discovery completed for source: {} -> Discovered: {}, New: {}, Updated: {}, Unchanged: {}, Duplicates: {}, Failed: {}",
                 source.getSourceName(), totalDiscovered, newJobs, updatedJobs, unchangedJobs, duplicates, failed);
 
+        expireStaleJobsForSource(source.getSourceName());
+
         return SourceDiscoveryResult.builder()
                 .source(source.getSourceName())
                 .status("SUCCESS")
@@ -165,6 +222,30 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
                 .duplicates(duplicates)
                 .failed(failed)
                 .build();
+    }
+
+    public int expireStaleJobsForSource(String sourceName) {
+        LocalDateTime threshold = LocalDateTime.now().minusDays(freshnessThresholdDays);
+        return expireStaleJobsForSource(sourceName, threshold);
+    }
+
+    public int expireStaleJobsForSource(String sourceName, LocalDateTime threshold) {
+        try {
+            List<Job> staleJobs = jobRepository.findStaleJobsForSource(sourceName, JobStatus.EXPIRED, threshold);
+            int expiredCount = 0;
+            for (Job job : staleJobs) {
+                job.setStatus(JobStatus.EXPIRED);
+                persistenceHelper.updateExistingJob(job);
+                expiredCount++;
+            }
+            if (expiredCount > 0) {
+                log.info("Marked {} stale jobs as EXPIRED for source: {} (threshold: {})", expiredCount, sourceName, threshold);
+            }
+            return expiredCount;
+        } catch (Exception e) {
+            log.error("Failed to expire stale jobs for source: {}", sourceName, e);
+            return 0;
+        }
     }
 
     private ProcessResult processListing(RawJobListing rawListing, String defaultSource) {
@@ -206,7 +287,11 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
 
         if (existingOpt.isPresent()) {
             Job existingJob = existingOpt.get();
+            existingJob.setLastSeenAt(now);
             existingJob.setLastDiscoveredAt(now);
+            if (existingJob.getFirstSeenAt() == null) {
+                existingJob.setFirstSeenAt(existingJob.getCreatedAt() != null ? existingJob.getCreatedAt() : now);
+            }
 
             boolean changed = updateJobFieldsIfChanged(existingJob, extractedJob, rawListing.getExternalId(), canonicalUrl, fingerprint);
 
@@ -227,11 +312,13 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
                 .source(extractedJob.getSource())
                 .employmentType(extractedJob.getEmploymentType())
                 .remoteType(extractedJob.getRemoteType())
-                .status(JobStatus.SAVED)
+                .status(JobStatus.ACTIVE)
                 .salaryMin(extractedJob.getSalaryMin())
                 .salaryMax(extractedJob.getSalaryMax())
                 .currency(extractedJob.getCurrency())
                 .postedDate(extractedJob.getPostedDate())
+                .firstSeenAt(now)
+                .lastSeenAt(now)
                 .lastDiscoveredAt(now)
                 .build();
 
@@ -254,7 +341,11 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
 
             if (fallbackOpt.isPresent()) {
                 Job fallbackJob = fallbackOpt.get();
+                fallbackJob.setLastSeenAt(now);
                 fallbackJob.setLastDiscoveredAt(now);
+                if (fallbackJob.getFirstSeenAt() == null) {
+                    fallbackJob.setFirstSeenAt(now);
+                }
                 boolean changed = updateJobFieldsIfChanged(fallbackJob, extractedJob, rawListing.getExternalId(), canonicalUrl, fingerprint);
                 persistenceHelper.updateExistingJob(fallbackJob);
                 return changed ? ProcessResult.UPDATED : ProcessResult.UNCHANGED;

@@ -160,6 +160,17 @@ export function fetchTailoredResume(id) {
   return request(`/jobs/${id}/resume/tailor`);
 }
 
+export function triggerJobIngestionApi(data = {}) {
+  return request('/jobs/ingestion/run', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
+
+export function fetchJobIngestionStatusApi() {
+  return request('/jobs/ingestion/status');
+}
+
 /** Applications API */
 export function fetchApplications({ page = 0, size = 20, status, search } = {}) {
   const params = new URLSearchParams();

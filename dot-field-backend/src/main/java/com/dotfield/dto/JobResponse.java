@@ -35,7 +35,12 @@ public class JobResponse {
     private String currency;
     private LocalDate postedDate;
     private LocalDateTime lastDiscoveredAt;
+    private LocalDateTime firstSeenAt;
+    private LocalDateTime lastSeenAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    public LocalDate getPostedAt() {
+        return postedDate;
+    }
 }

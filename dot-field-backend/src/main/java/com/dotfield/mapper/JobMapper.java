@@ -34,6 +34,8 @@ public class JobMapper {
                 .currency(job.getCurrency())
                 .postedDate(job.getPostedDate())
                 .lastDiscoveredAt(job.getLastDiscoveredAt())
+                .firstSeenAt(job.getFirstSeenAt())
+                .lastSeenAt(job.getLastSeenAt())
                 .createdAt(job.getCreatedAt())
                 .updatedAt(job.getUpdatedAt())
                 .build();
@@ -53,7 +55,7 @@ public class JobMapper {
 
         JobStatus status = request.getStatus();
         if (status == null) {
-            status = JobStatus.SAVED;
+            status = JobStatus.ACTIVE;
         }
 
         return Job.builder()
@@ -122,7 +124,7 @@ public class JobMapper {
                 .source(source)
                 .employmentType(extractedJob.getEmploymentType())
                 .remoteType(extractedJob.getRemoteType())
-                .status(JobStatus.SAVED)
+                .status(JobStatus.ACTIVE)
                 .salaryMin(extractedJob.getSalaryMin())
                 .salaryMax(extractedJob.getSalaryMax())
                 .currency(extractedJob.getCurrency() != null ? extractedJob.getCurrency().trim() : null)

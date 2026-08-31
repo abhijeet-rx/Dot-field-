@@ -69,7 +69,7 @@ class JobExtractionControllerTest {
                 .andExpect(jsonPath("$.data.source").value("COMPANY_WEBSITE"))
                 .andExpect(jsonPath("$.data.employmentType").value("FULL_TIME"))
                 .andExpect(jsonPath("$.data.remoteType").value("HYBRID"))
-                .andExpect(jsonPath("$.data.status").value("SAVED"));
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"));
 
         assertEquals(1, jobRepository.count());
     }

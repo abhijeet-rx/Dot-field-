@@ -29,7 +29,9 @@ class JobEntityTest {
         assertNotNull(savedJob.getId());
         assertNotNull(savedJob.getCreatedAt());
         assertNotNull(savedJob.getUpdatedAt());
-        assertEquals(JobStatus.SAVED, savedJob.getStatus());
+        assertNotNull(savedJob.getFirstSeenAt());
+        assertNotNull(savedJob.getLastSeenAt());
+        assertEquals(JobStatus.ACTIVE, savedJob.getStatus());
         assertEquals("MANUAL", savedJob.getSource());
     }
 

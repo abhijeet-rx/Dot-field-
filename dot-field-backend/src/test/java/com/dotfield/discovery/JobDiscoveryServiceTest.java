@@ -49,7 +49,7 @@ class JobDiscoveryServiceTest {
 
     @BeforeEach
     void setUp() {
-        discoveryService = new JobDiscoveryService(sourceRegistry, extractionPipeline, deduplicationService, persistenceHelper, jobRepository);
+        discoveryService = new JobDiscoveryService(sourceRegistry, extractionPipeline, deduplicationService, persistenceHelper, jobRepository, new JobIngestionMonitor());
     }
 
     // ──────────────────────────────────────────────
@@ -57,7 +57,7 @@ class JobDiscoveryServiceTest {
     // ──────────────────────────────────────────────
 
     @Test
-    void discoverJobs_newJobCreated_defaultStatusSavedAndLastDiscoveredAtSet() {
+    void discoverJobs_newJobCreated_defaultStatusActiveAndLastDiscoveredAtSet() {
         JobDiscoveryRequest request = JobDiscoveryRequest.builder()
                 .source("COMPANY_WEBSITE")
                 .maxResults(10)
@@ -87,7 +87,7 @@ class JobDiscoveryServiceTest {
         when(deduplicationService.generateFingerprint(any(), any(), any(), any())).thenReturn("hash123");
         when(deduplicationService.findExistingJob(any(), any(), any(), any(), any(), any(), any())).thenReturn(Optional.empty());
 
-        Job savedEntity = Job.builder().id(100L).status(JobStatus.SAVED).lastDiscoveredAt(LocalDateTime.now()).build();
+        Job savedEntity = Job.builder().id(100L).status(JobStatus.ACTIVE).lastDiscoveredAt(LocalDateTime.now()).build();
         when(persistenceHelper.saveNewJob(any(Job.class))).thenReturn(savedEntity);
 
         JobDiscoveryResponse response = discoveryService.discoverJobs(request);
@@ -100,7 +100,7 @@ class JobDiscoveryServiceTest {
         assertEquals(0, response.getFailed());
 
         verify(persistenceHelper).saveNewJob(argThat(job ->
-                job.getStatus() == JobStatus.SAVED && job.getLastDiscoveredAt() != null
+                job.getStatus() == JobStatus.ACTIVE && job.getLastDiscoveredAt() != null
         ));
     }
 

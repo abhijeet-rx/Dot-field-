@@ -78,19 +78,49 @@ public class Job {
 
     private LocalDateTime lastDiscoveredAt;
 
+    private LocalDateTime firstSeenAt;
+
+    private LocalDateTime lastSeenAt;
+
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @Column(nullable = false)
     private LocalDateTime updatedAt;
 
+    public LocalDate getPostedAt() {
+        return postedDate;
+    }
+
+    public void setPostedAt(LocalDate postedAt) {
+        this.postedDate = postedAt;
+    }
+
+    public LocalDateTime getLastSeenAt() {
+        return lastSeenAt != null ? lastSeenAt : lastDiscoveredAt;
+    }
+
+    public void setLastSeenAt(LocalDateTime lastSeenAt) {
+        this.lastSeenAt = lastSeenAt;
+        this.lastDiscoveredAt = lastSeenAt;
+    }
+
     @PrePersist
     protected void onCreate() {
         LocalDateTime now = LocalDateTime.now();
         this.createdAt = now;
         this.updatedAt = now;
+        if (this.firstSeenAt == null) {
+            this.firstSeenAt = now;
+        }
+        if (this.lastSeenAt == null) {
+            this.lastSeenAt = now;
+        }
+        if (this.lastDiscoveredAt == null) {
+            this.lastDiscoveredAt = now;
+        }
         if (this.status == null) {
-            this.status = JobStatus.SAVED;
+            this.status = JobStatus.ACTIVE;
         }
         if (this.source == null || this.source.trim().isEmpty()) {
             this.source = "MANUAL";

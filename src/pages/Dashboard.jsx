@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { fetchJobs } from '../api/client';
+import { fetchJobs, triggerJobIngestionApi } from '../api/client';
 
 const REMOTE_TYPES = ['', 'REMOTE', 'HYBRID', 'ONSITE', 'OTHER'];
 const EMPLOYMENT_TYPES = ['', 'FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERNSHIP', 'TEMPORARY', 'OTHER'];
@@ -47,6 +47,9 @@ export default function Dashboard() {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [ingesting, setIngesting] = useState(false);
+  const [ingestionNotice, setIngestionNotice] = useState(null);
+  const [ingestionError, setIngestionError] = useState(null);
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(0);
   const [totalElements, setTotalElements] = useState(0);
@@ -79,6 +82,28 @@ export default function Dashboard() {
     loadJobs();
   }, [loadJobs]);
 
+  const handleRefreshJobs = async () => {
+    setIngesting(true);
+    setIngestionError(null);
+    setIngestionNotice(null);
+
+    try {
+      const summary = await triggerJobIngestionApi();
+      if (summary) {
+        setIngestionNotice(
+          `Ingestion completed: ${summary.jobsInserted || 0} inserted, ${summary.jobsUpdated || 0} updated, ${summary.duplicates || 0} duplicates.`
+        );
+        setTimeout(() => setIngestionNotice(null), 5000);
+      }
+      await loadJobs();
+    } catch (err) {
+      setIngestionError(err.message || 'Job ingestion failed');
+      setTimeout(() => setIngestionError(null), 5000);
+    } finally {
+      setIngesting(false);
+    }
+  };
+
   function clearFilters() {
     setCompany('');
     setStatus('');
@@ -97,20 +122,55 @@ export default function Dashboard() {
         <div>
           <h1 className="dashboard__title">Job Intelligence</h1>
           <p className="dashboard__subtitle">
-            {totalElements > 0 ? `${totalElements} job${totalElements !== 1 ? 's' : ''} discovered` : 'Browse your job opportunities'}
+            {totalElements > 0 ? `${totalElements} job${totalElements !== 1 ? 's' : ''} discovered` : 'Browse live job opportunities'}
           </p>
         </div>
-        <button
-          className={`btn-filter-toggle ${filtersOpen ? 'active' : ''}`}
-          onClick={() => setFiltersOpen(p => !p)}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <line x1="4" y1="6" x2="20" y2="6" /><line x1="8" y1="12" x2="20" y2="12" /><line x1="12" y1="18" x2="20" y2="18" />
-          </svg>
-          Filters
-          {hasActiveFilters && <span className="filter-dot" />}
-        </button>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <button
+            className="btn-primary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+            disabled={ingesting || loading}
+            onClick={handleRefreshJobs}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              style={ingesting ? { animation: 'spin 1s linear infinite' } : {}}
+            >
+              <path d="M23 4v6h-6" /><path d="M1 20v-6h6" />
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+            </svg>
+            {ingesting ? 'Ingesting...' : 'Refresh Jobs'}
+          </button>
+          <button
+            className={`btn-filter-toggle ${filtersOpen ? 'active' : ''}`}
+            onClick={() => setFiltersOpen(p => !p)}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <line x1="4" y1="6" x2="20" y2="6" /><line x1="8" y1="12" x2="20" y2="12" /><line x1="12" y1="18" x2="20" y2="18" />
+            </svg>
+            Filters
+            {hasActiveFilters && <span className="filter-dot" />}
+          </button>
+        </div>
       </div>
+
+      {/* Ingestion Alerts */}
+      {ingestionNotice && (
+        <div style={{ marginBottom: '16px', padding: '12px 16px', background: 'rgba(16, 185, 129, 0.15)', border: '1px solid rgba(16, 185, 129, 0.3)', color: '#34d399', borderRadius: '8px', fontSize: '0.9rem' }}>
+          ✓ {ingestionNotice}
+        </div>
+      )}
+      {ingestionError && (
+        <div style={{ marginBottom: '16px', padding: '12px 16px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171', borderRadius: '8px', fontSize: '0.9rem' }}>
+          ⚠ {ingestionError}
+        </div>
+      )}
 
       {/* Filters Panel */}
       {filtersOpen && (
@@ -148,7 +208,7 @@ export default function Dashboard() {
               <label>Source</label>
               <input
                 type="text"
-                placeholder="e.g. COMPANY_WEBSITE"
+                placeholder="e.g. REMOTIVE"
                 value={source}
                 onChange={e => { setSource(e.target.value); setPage(0); }}
                 className="filter-input"
@@ -182,20 +242,30 @@ export default function Dashboard() {
       {!loading && error && (
         <div className="dashboard__state">
           <div className="state-icon">⚠</div>
-          <h3>Something went wrong</h3>
+          <h3>Backend Unavailable</h3>
           <p>{error}</p>
-          <button className="btn-primary" onClick={loadJobs}>Try Again</button>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+            <button className="btn-primary" onClick={loadJobs}>Try Again</button>
+            <button className="btn-secondary" disabled={ingesting} onClick={handleRefreshJobs}>
+              {ingesting ? 'Ingesting...' : 'Refresh Jobs'}
+            </button>
+          </div>
         </div>
       )}
 
       {!loading && !error && jobs.length === 0 && (
         <div className="dashboard__state">
           <div className="state-icon">📭</div>
-          <h3>No jobs found</h3>
-          <p>{hasActiveFilters ? 'Try changing your filters.' : 'Discover jobs using the API to see them here.'}</p>
-          {hasActiveFilters && (
-            <button className="btn-secondary" onClick={clearFilters}>Clear Filters</button>
-          )}
+          <h3>No jobs available yet</h3>
+          <p>{hasActiveFilters ? 'Try changing your filters.' : 'No jobs available yet. Try refreshing or check back later.'}</p>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+            {hasActiveFilters && (
+              <button className="btn-secondary" onClick={clearFilters}>Clear Filters</button>
+            )}
+            <button className="btn-primary" disabled={ingesting} onClick={handleRefreshJobs}>
+              {ingesting ? 'Ingesting Jobs...' : 'Refresh Jobs'}
+            </button>
+          </div>
         </div>
       )}
 
@@ -221,6 +291,9 @@ export default function Dashboard() {
                   {job.remoteType && (
                     <span className="meta-tag meta-tag--accent">{remoteLabel(job.remoteType)}</span>
                   )}
+                  {job.source && (
+                    <span className="meta-tag meta-tag--source">{job.source}</span>
+                  )}
                 </div>
                 <div className="job-card__details">
                   {job.employmentType && (
@@ -230,6 +303,9 @@ export default function Dashboard() {
                     <span className="detail-chip detail-chip--salary">
                       {formatSalary(job.salaryMin, job.salaryMax, job.currency)}
                     </span>
+                  )}
+                  {job.fitScore !== undefined && job.fitScore !== null && (
+                    <span className="detail-chip detail-chip--score">Match: {job.fitScore}%</span>
                   )}
                 </div>
                 {job.postedDate && (

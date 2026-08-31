@@ -69,7 +69,7 @@ class JobControllerTest {
                 .andExpect(jsonPath("$.data.title").value("Fullstack Developer"))
                 .andExpect(jsonPath("$.data.company").value("Acme Corp"))
                 .andExpect(jsonPath("$.data.source").value("MANUAL"))
-                .andExpect(jsonPath("$.data.status").value("SAVED"))
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"))
                 .andExpect(jsonPath("$.data.employmentType").value("FULL_TIME"))
                 .andExpect(jsonPath("$.data.remoteType").value("REMOTE"))
                 .andExpect(jsonPath("$.data.createdAt", notNullValue()))

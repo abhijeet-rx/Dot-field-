@@ -103,7 +103,8 @@ class JobIngestionOrchestratorTest {
                 extractionPipeline,
                 deduplicationService,
                 persistenceHelper,
-                jobRepository
+                jobRepository,
+                new JobIngestionMonitor()
         );
     }
 
