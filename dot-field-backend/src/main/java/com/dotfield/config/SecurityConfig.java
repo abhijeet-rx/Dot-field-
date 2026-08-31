@@ -39,7 +39,7 @@ public class SecurityConfig {
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
     private final ObjectMapper objectMapper;
 
-    @Value("${cors.allowed-origins:http://localhost:5173,http://localhost:5174}")
+    @Value("${cors.allowed-origins:}")
     private String allowedOrigins;
 
     @Bean
@@ -88,6 +88,10 @@ public class SecurityConfig {
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
                 .toList();
+
+        if (origins.contains("*")) {
+            throw new IllegalArgumentException("Wildcard '*' CORS origin is strictly prohibited when allowCredentials is enabled");
+        }
 
         config.setAllowedOriginPatterns(origins);
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
