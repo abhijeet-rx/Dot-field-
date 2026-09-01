@@ -1,173 +1,281 @@
 # DOT Field — Job Intelligence Platform
 
-> DOT Field is an AI-powered job discovery, requirement analysis, fit matching, candidate data protection, and resume tailoring platform.
+[![Live Demo](https://img.shields.io/badge/Live_Demo-Vercel-brightgreen?style=for-the-badge&logo=vercel)](https://dot-field.vercel.app)
+[![Watch Demo](https://img.shields.io/badge/Watch_Demo-YouTube-red?style=for-the-badge&logo=youtube)](https://youtu.be/example-demo)
+[![GitHub Repository](https://img.shields.io/badge/GitHub-Repository-blue?style=for-the-badge&logo=github)](https://github.com/abhijeet-rx/Dot-field-)
+
+**Live Application**: [https://dot-field.vercel.app](https://dot-field.vercel.app)  
+**GitHub Repository**: [https://github.com/abhijeet-rx/Dot-field-](https://github.com/abhijeet-rx/Dot-field-)
+
+**DOT Field** is an automated, production-grade **India-first multi-source job discovery, requirement analysis, candidate fit matching, and AI resume tailoring platform**.
+
+The application combines a high-throughput **multi-source ingestion pipeline** (integrating IndianAPI Jobs, Jooble, and Adzuna India APIs) with **deterministic location normalization**, **atomic cross-source deduplication**, **candidate skill/experience scoring**, and **ATS resume tailoring engines** to empower Indian job seekers and recruiters with real-time job market intelligence while preserving privacy and manual application workflows.
 
 > [!IMPORTANT]
-> **Application Disclaimer**: DOT Field does not automatically apply to jobs. Users manually apply through the original job listing.
+> **Application Disclaimer**: DOT Field does not automatically apply to jobs without user intent. Candidates manually apply through the original employer job listing URL.
 
 ---
 
-## Overview
+## Key Features
 
-DOT Field helps candidates discover relevant job opportunities, analyze job requirements against their authentic candidate profile, score job fit, generate tailored resumes, and manage job opportunities — while preserving candidate privacy and manual application workflows.
-
----
-
-## Tech Stack
-
-- **Frontend**: React 19, Vite, React Router DOM, Vanilla CSS3 (Glassmorphism & Micro-animations)
-- **Backend**: Java 21, Spring Boot 3.4.1 (Web, Data JPA, Security, Validation, Flyway)
-- **Security**: Spring Security 6, JJWT (0.12.6), BCrypt Password Hashing, HS256 (HMAC-SHA256) JWT Validation, Stateless Sessions
-- **Database**: PostgreSQL (Production/Dev), H2 (In-Memory Unit Testing)
-
----
-
-## Environment Variables & Configuration
-
-The application requires environment variables in production and development. Copy `.env.example` to `.env` in `dot-field-backend/` or set variables in your deployment environment:
-
-| Variable | Description | Default / Required |
-|----------|-------------|-------------------|
-| `DB_URL` | PostgreSQL JDBC connection URL | `jdbc:postgresql://localhost:5432/dot_field` |
-| `DB_USERNAME` | PostgreSQL database user | `postgres` |
-| `DB_PASSWORD` | PostgreSQL database password | *(Required — no hardcoded fallback)* |
-| `JWT_SECRET` | Secret key for HMAC-SHA256 JWT signing | *(Required for HS256 — min 32 chars / 256 bits)* |
-| `JWT_EXPIRATION` | Token expiration time in milliseconds | `86400000` (24h) |
-| `JWT_ALGORITHM` | JWT signing & verification algorithm | `HS256` |
-| `JOB_INGESTION_SCHEDULER_ENABLED` | Enables scheduled background job ingestion | `false` *(Disabled by default)* |
-| `JOB_CANONICALIZE_SCHEME` | Normalizes `http` and `https` scheme equivalence | `true` |
-| `RATE_LIMIT_DISCOVERY_CAPACITY` | Max requests for `/jobs/discover` per window | `100` |
-| `RATE_LIMIT_DISCOVERY_REFILL_SECONDS` | Window duration for rate limiter refill | `60` |
-| `INITIAL_ADMIN_EMAIL` | Email designated for ADMIN role upon registration/startup | `admin@example.com` |
-| `CORS_ALLOWED_ORIGINS` | Allowed origins for CORS | `http://localhost:5173,http://localhost:5174` |
-| `SPRING_PROFILES_ACTIVE` | Active Spring profile (`dev` or `prod`) | `default` |
-| `INDIANAPI_ENABLED` | Enables IndianAPI Jobs source adapter | `true` |
-| `INDIANAPI_KEY` | API Key for IndianAPI Jobs | *(Required if INDIANAPI_ENABLED=true)* |
-| `JOOBLE_ENABLED` | Enables Jooble Job Search source adapter | `true` |
-| `JOOBLE_API_KEY` | API Key for Jooble | *(Required if JOOBLE_ENABLED=true)* |
-| `ADZUNA_ENABLED` | Enables Adzuna India Job Search source adapter | `true` |
-| `ADZUNA_APP_ID` / `KEY` | Credentials for Adzuna India API | *(Required if ADZUNA_ENABLED=true)* |
-| `COMPANY_CAREERS_ENABLED` | Enables Indian company career sources & ATS feeds | `false` *(Disabled by default until credentials configured)* |
-| `REMOTIVE_ENABLED` | Enables Remotive secondary source (demoted) | `false` *(Disabled default)* |
-| `NAUKRI_ENABLED` | Enables Naukri Enterprise Partner API | `false` *(Requires Partner API keys)* |
-| `NAUKRI_CLIENT_ID` / `SECRET` | Naukri OAuth 2.0 Partner credentials | *(Required if NAUKRI_ENABLED=true)* |
-| `FOUNDIT_ENABLED` | Enables Foundit (Monster India) Partner API | `false` *(Requires Partner API keys)* |
-| `FOUNDIT_CLIENT_ID` / `SECRET` | Foundit OAuth 2.0 Partner credentials | *(Required if FOUNDIT_ENABLED=true)* |
-| `INDEED_ENABLED` | Enables Indeed India Publisher/Partner API | `false` *(Requires Publisher ID)* |
-| `INDEED_PUBLISHER_ID` | Indeed India Publisher ID | *(Required if INDEED_ENABLED=true)* |
+- **India-First Multi-Source Job Discovery**: Ingests real-time job listings from verified Indian job API providers (IndianAPI Jobs, Jooble India, and Adzuna India).
+- **Deterministic India Location Normalization & Filtering**:
+  - Normalizes 35+ major Indian tech hubs & tier-1/tier-2 cities (Bengaluru, Hyderabad, Pune, Mumbai, Delhi NCR, Gurugram, Noida, Chennai, etc.).
+  - Explicitly validates India-remote roles (`"Remote - India"`, `"India - Remote"`, `"Remote (India)"`) while rejecting generic unanchored remote listings and foreign locations (`"London, UK"`, `"San Francisco, USA"`).
+- **Atomic Cross-Source Deduplication**: SHA-256 fingerprint hashing and partial unique indexes (`Flyway V6`) prevent duplicate job listings across different job providers.
+- **Candidate Profile & Requirement Matching**: Scores job fit across 4 weighted dimensions:
+  - **Skill Overlap (40%)**: Direct match ratio of mandatory, preferred, and bonus technical skills.
+  - **Experience Relevance (30%)**: Verified total and domain-specific calendar experience alignment.
+  - **Title & Domain Fit (20%)**: Keyword hierarchy and role responsibility alignment.
+  - **Location & Contract Fit (10%)**: Remote preferences, city proximity, and employment type.
+- **ATS Resume Tailoring Engine**: Generates customized, ATS-friendly resumes per job opportunity, highlighting relevant keywords, prior achievements, and structured summary sections.
+- **Application Tracking & Funnel Analytics**: Interactive Kanban and table boards tracking job application statuses (`SAVED`, `APPLIED`, `INTERVIEW`, `OFFER`, `REJECTED`) with real-time conversion metrics.
+- **Permanent Security & RBAC Isolation**: Multi-role security (`USER` vs `ADMIN`) powered by BCrypt password hashing, HS256 JWT tokens, and automated idempotent admin provisioning (`INITIAL_ADMIN_EMAIL`).
+- **Production-Hardened Rate Limiting**: Per-client Bucket4j rate limiting protecting discovery, ingestion, and authentication endpoints against brute force and quota exhaustion.
 
 ---
 
-## 🇮🇳 Phase 13/14 — India-First Multi-Source Job Ingestion Platform
+## Application Screenshots
 
-DOT Field prioritizes legitimate Indian job opportunities and explicit India-remote roles across popular India-relevant sources while strictly adhering to terms of service and avoiding unauthorized HTML scraping.
+### 1. Job Intelligence Dashboard & Ingestion Hub
+![Job Intelligence Dashboard](public/screenshots/dashboard.png)
 
-### Source Availability Matrix
+### 2. Candidate Job Fit & Requirements Analyzer
+![Job Fit Analyzer](public/screenshots/job_match.png)
 
-| Source Adapter | Status Category | Access Method | Credentials Required |
-| -------------- | --------------- | ------------- | -------------------- |
-| **IndianAPI Jobs** | `WORKING` | REST API (`jobs.indianapi.in`) | `INDIANAPI_KEY` |
-| **Jooble** | `WORKING` | REST API (`jooble.org/api`) | `JOOBLE_API_KEY` |
-| **Adzuna India** | `WORKING` | REST API (`api.adzuna.com` `co=in`) | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` |
-| **Company Career Pages** | `DISABLED / NOT CONFIGURED` | Structured ATS Employer Feeds | Credentials / Config required |
-| **Naukri.com** | `DISABLED — PARTNER ACCESS REQUIRED` | Enterprise OAuth 2.0 / Recruiter API | `NAUKRI_CLIENT_ID`, `NAUKRI_CLIENT_SECRET` |
-| **Foundit (Monster India)** | `DISABLED — PARTNER ACCESS REQUIRED` | Partner API | `FOUNDIT_CLIENT_ID`, `FOUNDIT_CLIENT_SECRET` |
-| **Indeed India** | `DISABLED — PARTNER ACCESS REQUIRED` | Publisher / Partner API (`co=in`) | `INDEED_PUBLISHER_ID` |
-| **Remotive** | `DISABLED` *(Demoted)* | Public API (Secondary source, filtered via `IndiaJobFilter`) | None |
+### 3. Tailored Resume Generator
+![Tailored Resume Generator](public/screenshots/resume_tailor.png)
 
-### Location Normalization & India Job Filter
+### 4. Application Tracker & Analytics
+![Application Tracker](public/screenshots/applications.png)
 
-Every job listing passes through `IndiaJobFilter` and `IndiaLocationNormalizer` before extraction and persistence:
-- **Indian Tech Hubs & Cities**: Bengaluru, Hyderabad, Chennai, Pune, Mumbai, Delhi NCR, Gurugram, Noida, Kolkata, Ahmedabad, Jaipur, Kochi, Chandigarh, Indore, etc. -> Classified as `isIndiaRelevant = true`, `normalizedCountry = "IN"`.
-- **Explicit India Remote**: `"Remote - India"`, `"India - Remote"`, `"Remote (India)"`, `"Anywhere in India"` -> `isIndiaRelevant = true`, `isRemote = true`, `remoteCountry = "IN"`.
-- **Ambiguous Remote / Foreign Locations**: Generic `"Remote"` without explicit country eligibility or foreign locations (`"San Francisco, USA"`, `"London, UK"`) are rejected (`isIndiaRelevant = false`) to prevent false positives.
+---
 
-## Active Profiles & Logging
+## Application Workflow
 
-- **Development (`SPRING_PROFILES_ACTIVE=dev`)**: Enables SQL log printing (`org.hibernate.SQL=DEBUG`) and binder parameter tracing (`BasicBinder=TRACE`).
-- **Production (`SPRING_PROFILES_ACTIVE=prod`)**: Hardens logging defaults (`org.hibernate.SQL=WARN`, `BasicBinder=OFF`) to eliminate sensitive SQL parameter leakages.
+```mermaid
+flowchart TD
+    DiscoveryTrigger[Job Discovery / Admin Trigger] --> IngestEngine[Multi-Source Job Ingestion Engine]
+    
+    subgraph Multi-Source Ingestion Pipeline
+        IngestEngine --> IndianAPI[IndianAPI Jobs Adapter]
+        IngestEngine --> Jooble[Jooble India Adapter]
+        IngestEngine --> Adzuna[Adzuna India Adapter]
+    end
 
-```bash
-# Run backend in development profile
-SPRING_PROFILES_ACTIVE=dev .\mvnw.cmd spring-boot:run
+    IndianAPI --> IndiaFilter[India Location Normalizer & IndiaJobFilter]
+    Jooble --> IndiaFilter
+    Adzuna --> IndiaFilter
 
-# Run backend in production profile
-SPRING_PROFILES_ACTIVE=prod .\mvnw.cmd spring-boot:run
+    IndiaFilter --> DedupeEngine[SHA-256 Fingerprint Deduplication]
+    DedupeEngine --> AtomicDB[PostgreSQL Single-Transaction Ingestion]
+
+    AtomicDB --> Candidate[Candidate Job Search & Profile]
+    
+    subgraph Intelligence & Tailoring Engine
+        Candidate --> Matcher[Job Match Analyzer]
+        Candidate --> ResumeTailor[ATS Resume Tailoring Engine]
+    end
+
+    Matcher --> AppTracker[Application Tracker & Analytics]
+    ResumeTailor --> ApplyURL[Manual Apply on Original Employer URL]
 ```
 
 ---
 
-## Database Migration & Concurrency-Safe Deduplication
+## Scoring Methodology
 
-- **Flyway**: Owns all database schema creation and structural migrations (`src/main/resources/db/migration/`).
-- **Flyway Migration V6 (`V6__deduplication_fingerprint_unique_index.sql`)**:
-  - Archives any pre-existing duplicate rows into `jobs_backup` table before enforcing partial unique index `ux_job_deduplication_fingerprint`.
-  - Native atomic persistence in `JobDiscoveryPersistenceHelper` uses `JdbcTemplate` `INSERT ... ON CONFLICT (deduplication_fingerprint) DO UPDATE` to prevent race conditions during parallel ingestion runs.
+Jobs are evaluated against authentic candidate profiles across four weighted dimensions. The scoring criteria strictly match the backend implementation in `JobMatchingService.java`:
 
----
+| Dimension | Weight | Description |
+| :--- | :---: | :--- |
+| **Skill Overlap** | **40%** | Direct match ratio of candidate skills vs required, preferred, and bonus job skills. |
+| **Experience Relevance** | **30%** | Exact calendar duration of relevant candidate experience vs. target job requirement. |
+| **Title & Domain Fit** | **20%** | Structural title keyword alignment and role domain overlap. |
+| **Location & Contract Fit** | **10%** | Location proximity (Indian tech hub), remote type preference, and employment contract. |
 
-## Rate Limiting & Security
-
-- **Discovery & Auth Rate Limiter**: Endpoints `/jobs/discover`, `/jobs/ingestion/run`, `/auth/login`, and `/auth/register` are protected by Bucket4j rate limiting using a composite client key (`user:<email>` for authenticated users, client IP address for unauthenticated requests). Exceeding limit returns `HTTP 429 Too Many Requests` with a `Retry-After` header.
-- **Trusted Proxy Client IP Safety**: Client IP resolution defaults to `request.getRemoteAddr()`. Header `X-Forwarded-For` is evaluated ONLY if `rate.limiter.trusted-proxy.enabled=true`.
-- **JWT Security**: Signed & verified using `HS256` HMAC-SHA256 with mandatory minimum 256-bit secret key validation (`JWT_SECRET`).
+$$\text{Final Fit Score} = (0.40 \times \text{Skill}) + (0.30 \times \text{Experience}) + (0.20 \times \text{Title}) + (0.10 \times \text{Location})$$
 
 ---
 
-## Containerization & CI/CD
+## Technology Stack
 
-### Docker Build
+### Client-Side (Frontend)
+- **Framework**: React 19 + Vite 8
+- **Styling**: Vanilla CSS3 (Glassmorphism, Vibrant Dark Mode, Micro-animations)
+- **Icons**: Lucide React 1.33
+- **Routing**: React Router DOM 7
+- **HTTP Client**: Native Fetch API with auto Bearer JWT injection & 401 handling
 
-```bash
-docker build -t dotfield-backend -f dot-field-backend/Dockerfile dot-field-backend
-docker run -p 8080:8080 -e DB_PASSWORD=your_pass -e JWT_SECRET=your_secret dotfield-backend
+### Server-Side (Backend)
+- **Language**: Java 21 (OpenJDK / Eclipse Temurin)
+- **API Framework**: Spring Boot 3.4.1 (Spring Web, Spring Validation)
+- **Security Framework**: Spring Security 6, JJWT 0.12.6, BCrypt Password Hashing
+- **Rate Limiting**: Bucket4j 8.10.1 (In-Memory Bounded LRU Token Buckets)
+
+### Real Job API Providers
+- **IndianAPI Jobs**: REST API (`jobs.indianapi.in`)
+- **Jooble**: REST API (`jooble.org/api`)
+- **Adzuna India**: REST API (`api.adzuna.com` `co=in`)
+
+### Database & ORM
+- **Database**: PostgreSQL 15+ (Production/Dev) / H2 (In-Memory Unit Testing)
+- **Migration & ORM**: Flyway DB 10+ (Migrations V1–V7) & Spring Data JPA / Hibernate 6
+
+---
+
+## Project Structure
+
+```text
+Dot-field-/
+├── dot-field-backend/
+│   ├── src/main/java/com/dotfield/
+│   │   ├── config/             # SecurityConfig, CorsConfig, AdminBootstrapInitializer
+│   │   ├── controller/         # REST Controllers (AuthController, JobController, ApplicationController, HealthController)
+│   │   ├── discovery/          # Multi-source job discovery engine:
+│   │   │   ├── india/          # IndiaJobFilter & IndiaLocationNormalizer
+│   │   │   ├── source/         # IndianApiJobSource, JoobleJobSource, AdzunaJobSource
+│   │   │   └── JobDiscoveryService.java
+│   │   ├── dto/                # Pydantic-like Java DTOs & ApiResponse envelopes
+│   │   ├── entity/             # JPA Entities (User, Profile, Job, Application)
+│   │   ├── exception/          # GlobalExceptionHandler & ApiError
+│   │   ├── repository/         # Spring Data JPA Repositories
+│   │   ├── security/           # JwtService, JwtAuthenticationFilter, DiscoveryRateLimitFilter
+│   │   ├── service/            # Core business logic (AuthService, JobService, ApplicationService)
+│   │   └── tailoring/          # ATS Resume Tailoring Engine & Prioritizers
+│   ├── src/main/resources/
+│   │   ├── db/migration/       # Flyway SQL migrations (V1__baseline to V7__india_relevance)
+│   │   └── application.properties
+│   ├── src/test/java/          # JUnit 5 test suite (450+ unit & integration test cases)
+│   ├── Dockerfile              # Multi-stage Java 21 Dockerfile
+│   ├── pom.xml                 # Maven build configuration
+│   └── .env.example
+├── src/                        # React Frontend
+│   ├── api/                    # API client helper (client.js)
+│   ├── components/             # React UI components (Navbar, JobCard, Modal)
+│   ├── pages/                  # Application pages (JobIntelligence, Profile, Applications)
+│   └── index.css               # Design system variables & glassmorphic tokens
+├── public/                     # Static assets & screenshots
+├── package.json                # Frontend Node dependencies
+├── vite.config.js              # Vite build configuration
+└── README.md
 ```
 
-### GitHub Actions CI Workflow
+---
 
-The repository includes a GitHub Actions pipeline (`.github/workflows/ci.yml`) that automatically runs backend unit test suites (`./mvnw test`) and frontend static builds (`npm run build`) on pull requests and pushes to `main` branch.
+## Setup & Installation
+
+### Prerequisites
+- **Java**: `21` (JDK)
+- **Node.js**: `18+`
+- **PostgreSQL**: `14+`
+- **API Keys**: IndianAPI Key, Jooble API Key, Adzuna App ID & Key
 
 ---
 
-## Quick Start
-
-### 1. Prerequisites
-
-- Java 21 SDK
-- Node.js 18+ & npm
-- PostgreSQL 14+
-
-### 2. Backend Setup
+### 1. Backend Setup
 
 ```bash
 cd dot-field-backend
 
 # Copy environment template
 cp .env.example .env
-# Edit .env to set your DB_PASSWORD and JWT_SECRET
-
-# Run tests
-.\mvnw.cmd clean test
-
-# Run application
-.\mvnw.cmd spring-boot:run
 ```
 
-The backend server starts on `http://localhost:8080/api`.
+Edit `dot-field-backend/.env` with your local database and API credentials:
+```ini
+DB_URL=jdbc:postgresql://localhost:5432/dot_field
+DB_USERNAME=postgres
+DB_PASSWORD=your_postgres_password
 
-### 3. Frontend Setup
+JWT_SECRET=your_secure_random_256bit_key_at_least_32_characters
+INITIAL_ADMIN_EMAIL=admin@example.com
 
+INDIANAPI_KEY=your_indianapi_key
+JOOBLE_API_KEY=your_jooble_api_key
+ADZUNA_APP_ID=your_adzuna_app_id
+ADZUNA_APP_KEY=your_adzuna_app_key
+```
+
+Start the Spring Boot backend server:
 ```bash
-# In root directory
+# Windows (PowerShell):
+.\mvnw.cmd spring-boot:run
+
+# macOS/Linux:
+./mvnw spring-boot:run
+```
+- API Base Endpoint: `http://localhost:8080/api`
+- Health Check Endpoint: `http://localhost:8080/api/health`
+
+---
+
+### 2. Frontend Setup
+
+In a new terminal tab from the root directory:
+```bash
+# Install Node dependencies
 npm install
 
-# Run dev server
+# Start Vite development server
 npm run dev
-# → http://localhost:5173
+```
+- Frontend Application: `http://localhost:5173`
+
+---
+
+## Running Automated Tests
+
+The backend includes a JUnit 5 test suite covering authorization, JWT validation, admin provisioning, pagination bounds, rate limiting, India filtering, deduplication, and end-to-end workflow flows:
+
+```bash
+cd dot-field-backend
+.\mvnw.cmd clean test
+```
+
+Expected output:
+```text
+[INFO] Tests run: 450, Failures: 0, Errors: 0, Skipped: 3
+[INFO] BUILD SUCCESS
 ```
 
 ---
 
-## License
+## API Reference Overview
 
-Private repository. All rights reserved.
+| Method | Endpoint | Access Level | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/health` | `Public` | Database & application health probe |
+| `POST` | `/api/auth/register` | `Public` | Register candidate account (Assigns `ADMIN` if email matches `INITIAL_ADMIN_EMAIL`) |
+| `POST` | `/api/auth/login` | `Public` | Authenticate user & return HS256 Bearer JWT token |
+| `GET` | `/api/auth/me` | `Authenticated` | Get current logged-in user profile & role |
+| `GET` | `/api/jobs` | `Authenticated` | Search & filter jobs (`page`, `size`, `company`, `remoteType`, `employmentType`) |
+| `GET` | `/api/jobs/{id}` | `Authenticated` | Get detailed job opportunity info |
+| `GET` | `/api/jobs/{id}/match` | `Authenticated` | Compute 4-dimension fit score & match breakdown for profile |
+| `GET` | `/api/jobs/{id}/resume/tailor` | `Authenticated` | Generate tailored ATS resume markdown for job |
+| `POST` | `/api/jobs/discover` | `ADMIN Only` | Trigger live multi-source job discovery & ingestion run |
+| `GET` | `/api/jobs/ingestion/status` | `ADMIN Only` | Get ingestion metrics (sources, fetched, filtered, deduplicated) |
+| `GET` | `/api/applications` | `Authenticated` | List user tracked job applications |
+| `POST` | `/api/applications` | `Authenticated` | Track a job application (`SAVED`, `APPLIED`, `INTERVIEW`, etc.) |
+| `GET` | `/api/applications/analytics` | `Authenticated` | Retrieve application funnel metrics & conversion stats |
+
+---
+
+## Security & Performance Highlights
+
+- **Security & Authorization**: Strict RBAC (`USER` vs `ADMIN`) enforced via Spring Security 6.
+- **HS256 JWT Hardening**: Mandatory secret key validation (>= 32 bytes) preventing algorithm confusion.
+- **Bucket4j Rate Limiting**: User-keyed / safe IP-keyed token buckets protecting auth and discovery endpoints.
+- **Trusted Proxy IP Safety**: Evaluates `X-Forwarded-For` header ONLY if `rate.limiter.trusted-proxy.enabled=true`.
+- **Atomic Deduplication**: Flyway V6 partial unique index on `deduplication_fingerprint` preventing race conditions during parallel ingestion.
+- **Zero-Secret Exposure**: Strict `.gitignore` rules preventing `.env` or API credentials from entering Git history or client bundles.
+
+---
+
+## Author
+
+Developed by **Abhijeet Singh**  
+VIT-AP University  
+GitHub Repository: [DOT Field Platform](https://github.com/abhijeet-rx/Dot-field-)
+
+---
