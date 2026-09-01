@@ -34,7 +34,7 @@ class JobDiscoveryIntegrationTest {
     @Autowired
     private JobRepository jobRepository;
 
-    @MockBean
+    @MockBean(name = "companyCareerPageSource")
     private JobSource mockJobSource;
 
     @MockBean
