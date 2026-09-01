@@ -61,7 +61,8 @@ public class DiscoveryRateLimitFilter extends OncePerRequestFilter {
             return true;
         }
         String path = request.getRequestURI();
-        return !path.endsWith("/jobs/discover") && !path.endsWith("/jobs/ingestion/run");
+        return !path.endsWith("/jobs/discover") && !path.endsWith("/jobs/ingestion/run")
+                && !path.endsWith("/auth/login") && !path.endsWith("/auth/register");
     }
 
     @Override
