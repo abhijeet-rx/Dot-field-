@@ -14,6 +14,7 @@ import java.util.List;
 public class JobDiscoveryResponse {
 
     private int discovered;
+    private int indiaFiltered;
     private int newJobs;
     private int updatedJobs;
     private int unchangedJobs;

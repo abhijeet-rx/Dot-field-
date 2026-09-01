@@ -16,6 +16,7 @@ public class SourceDiscoveryResult {
     private String status = "SUCCESS";
     private String errorMessage;
     private int discovered;
+    private int indiaFiltered;
     private int newJobs;
     private int updatedJobs;
     private int unchangedJobs;

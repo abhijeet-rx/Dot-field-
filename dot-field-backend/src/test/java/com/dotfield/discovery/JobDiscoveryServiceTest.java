@@ -177,8 +177,8 @@ class JobDiscoveryServiceTest {
                     .status(initialStatus)
                     .build();
 
-            RawJobListing rawListing = RawJobListing.builder().title("New Title").company("Acme").build();
-            ExtractedJob extractedJob = ExtractedJob.builder().title("New Title").company("Acme").source("COMPANY_WEBSITE").build();
+            RawJobListing rawListing = RawJobListing.builder().title("New Title").company("Acme").location("Bengaluru, India").isIndiaRelevant(true).build();
+            ExtractedJob extractedJob = ExtractedJob.builder().title("New Title").company("Acme").location("Bengaluru, India").isIndiaRelevant(true).source("COMPANY_WEBSITE").build();
 
             when(sourceRegistry.getRequiredSource("COMPANY_WEBSITE")).thenReturn(jobSource);
             when(jobSource.getSourceName()).thenReturn("COMPANY_WEBSITE");
@@ -200,14 +200,16 @@ class JobDiscoveryServiceTest {
     @Test
     void discoverJobs_unchangedListing_updatesLastDiscoveredAtOnly() {
         JobDiscoveryRequest request = JobDiscoveryRequest.builder().source("COMPANY_WEBSITE").build();
-        RawJobListing rawListing = RawJobListing.builder().externalId("JOB-1").title("Java Dev").company("Acme").build();
-        ExtractedJob extractedJob = ExtractedJob.builder().title("Java Dev").company("Acme").source("COMPANY_WEBSITE").build();
+        RawJobListing rawListing = RawJobListing.builder().externalId("JOB-1").title("Java Dev").company("Acme").location("Bengaluru, India").isIndiaRelevant(true).build();
+        ExtractedJob extractedJob = ExtractedJob.builder().title("Java Dev").company("Acme").location("Bengaluru, India").isIndiaRelevant(true).source("COMPANY_WEBSITE").build();
 
         Job existingJob = Job.builder()
                 .id(1L)
                 .externalId("JOB-1")
                 .title("Java Dev")
                 .company("Acme")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .source("COMPANY_WEBSITE")
                 .status(JobStatus.INTERVIEW)
                 .build();
@@ -233,7 +235,7 @@ class JobDiscoveryServiceTest {
     @Test
     void discoverJobs_failedListing_incrementsFailedNotDuplicates() {
         JobDiscoveryRequest request = JobDiscoveryRequest.builder().source("COMPANY_WEBSITE").build();
-        RawJobListing rawListing = RawJobListing.builder().title("Bad Job").company("Acme").build();
+        RawJobListing rawListing = RawJobListing.builder().title("Bad Job").company("Acme").location("Bengaluru, India").isIndiaRelevant(true).build();
 
         when(sourceRegistry.getRequiredSource("COMPANY_WEBSITE")).thenReturn(jobSource);
         when(jobSource.getSourceName()).thenReturn("COMPANY_WEBSITE");
@@ -275,11 +277,14 @@ class JobDiscoveryServiceTest {
     void discoverJobs_changedSalary_countsAsUpdated() {
         JobDiscoveryRequest request = JobDiscoveryRequest.builder().source("COMPANY_WEBSITE").build();
         RawJobListing rawListing = RawJobListing.builder().externalId("JOB-1").title("Dev").company("Acme")
+                .location("Bengaluru, India").isIndiaRelevant(true)
                 .salaryMin(new BigDecimal("120000")).salaryMax(new BigDecimal("180000")).build();
         ExtractedJob extractedJob = ExtractedJob.builder().title("Dev").company("Acme").source("COMPANY_WEBSITE")
+                .location("Bengaluru, India").isIndiaRelevant(true)
                 .salaryMin(new BigDecimal("120000")).salaryMax(new BigDecimal("180000")).build();
 
         Job existingJob = Job.builder().id(1L).externalId("JOB-1").title("Dev").company("Acme")
+                .location("Bengaluru, India").isIndiaRelevant(true)
                 .source("COMPANY_WEBSITE").status(JobStatus.SAVED)
                 .salaryMin(new BigDecimal("100000")).salaryMax(new BigDecimal("150000")).build();
 
@@ -299,11 +304,14 @@ class JobDiscoveryServiceTest {
     void discoverJobs_changedDescription_countsAsUpdated() {
         JobDiscoveryRequest request = JobDiscoveryRequest.builder().source("COMPANY_WEBSITE").build();
         RawJobListing rawListing = RawJobListing.builder().externalId("JOB-1").title("Dev").company("Acme")
+                .location("Bengaluru, India").isIndiaRelevant(true)
                 .description("New description").build();
         ExtractedJob extractedJob = ExtractedJob.builder().title("Dev").company("Acme").source("COMPANY_WEBSITE")
+                .location("Bengaluru, India").isIndiaRelevant(true)
                 .description("New description").build();
 
         Job existingJob = Job.builder().id(1L).externalId("JOB-1").title("Dev").company("Acme")
+                .location("Bengaluru, India").isIndiaRelevant(true)
                 .source("COMPANY_WEBSITE").description("Old description").status(JobStatus.SAVED).build();
 
         when(sourceRegistry.getRequiredSource("COMPANY_WEBSITE")).thenReturn(jobSource);

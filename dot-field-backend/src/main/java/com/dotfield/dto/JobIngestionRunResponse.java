@@ -13,6 +13,7 @@ public class JobIngestionRunResponse {
 
     private int sourcesProcessed;
     private int jobsFetched;
+    private int indiaFiltered;
     private int jobsInserted;
     private int jobsUpdated;
     private int duplicates;
@@ -32,6 +33,7 @@ public class JobIngestionRunResponse {
         return JobIngestionRunResponse.builder()
                 .sourcesProcessed(sourcesCount)
                 .jobsFetched(response.getDiscovered())
+                .indiaFiltered(response.getIndiaFiltered())
                 .jobsInserted(response.getNewJobs())
                 .jobsUpdated(response.getUpdatedJobs())
                 .duplicates(totalDuplicates)

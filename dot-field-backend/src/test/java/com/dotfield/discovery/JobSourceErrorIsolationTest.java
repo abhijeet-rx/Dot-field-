@@ -96,7 +96,8 @@ class JobSourceErrorIsolationTest {
         ExtractedJob extractedB = ExtractedJob.builder()
                 .title("Python Engineer")
                 .company("Tech Corp")
-                .location("Remote")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .jobUrl("https://techcorp.com/jobs/101")
                 .source("SOURCE_B_SUCCESSFUL")
                 .build();

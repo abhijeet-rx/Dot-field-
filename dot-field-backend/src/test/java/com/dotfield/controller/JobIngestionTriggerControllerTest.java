@@ -112,11 +112,15 @@ class JobIngestionTriggerControllerTest {
                 .externalId("INGEST-2")
                 .title("Frontend Developer")
                 .company("WebCorp")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .build();
         RawJobListing listing2 = RawJobListing.builder()
                 .externalId("INGEST-3")
                 .title("Backend Developer")
                 .company("WebCorp")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .build();
         when(mockJobSource.discover(any())).thenReturn(List.of(listing1, listing2));
 

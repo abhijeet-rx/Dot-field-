@@ -18,6 +18,7 @@ public class IngestionStatusResponse {
     private Long durationMs;
     private int sourcesProcessed;
     private int jobsFetched;
+    private int indiaFiltered;
     private int jobsInserted;
     private int jobsUpdated;
     private int duplicates;

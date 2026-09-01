@@ -117,11 +117,15 @@ class JobIngestionMonitoringControllerTest {
                 .externalId("MON-2")
                 .title("Valid Job Title")
                 .company("GoodCorp")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .build();
         RawJobListing invalidListing = RawJobListing.builder()
                 .externalId("MON-3")
                 .title(null) // Missing title causes extraction exception
                 .company("GoodCorp")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .build();
         when(mockJobSource.discover(any())).thenReturn(List.of(validListing, invalidListing));
 

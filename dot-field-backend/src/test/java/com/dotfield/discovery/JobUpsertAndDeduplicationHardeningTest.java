@@ -60,6 +60,8 @@ class JobUpsertAndDeduplicationHardeningTest {
                 .externalId("REM-999")
                 .title("Staff Java Engineer")
                 .company("Acme")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .source("REMOTIVE")
                 .build();
         when(source.discover(any())).thenReturn(List.of(rawListing));
@@ -67,6 +69,8 @@ class JobUpsertAndDeduplicationHardeningTest {
         ExtractedJob extracted = ExtractedJob.builder()
                 .title("Staff Java Engineer")
                 .company("Acme")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .source("REMOTIVE")
                 .build();
         when(extractionPipeline.extractAndNormalize(any(), eq("REMOTIVE"))).thenReturn(extracted);
@@ -76,6 +80,8 @@ class JobUpsertAndDeduplicationHardeningTest {
                 .externalId("REM-999")
                 .title("Senior Java Engineer") // changed
                 .company("Acme")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .source("REMOTIVE")
                 .status(JobStatus.SAVED)
                 .build();
@@ -105,6 +111,8 @@ class JobUpsertAndDeduplicationHardeningTest {
                 .jobUrl("https://acme.com/jobs/123?utm_source=linkedin")
                 .title("Backend Engineer")
                 .company("Acme")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .source("COMPANY_WEBSITE")
                 .build();
         when(source.discover(any())).thenReturn(List.of(rawListing));
@@ -113,6 +121,8 @@ class JobUpsertAndDeduplicationHardeningTest {
                 .jobUrl("https://acme.com/jobs/123")
                 .title("Backend Engineer")
                 .company("Acme")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .source("COMPANY_WEBSITE")
                 .build();
         when(extractionPipeline.extractAndNormalize(any(), eq("COMPANY_WEBSITE"))).thenReturn(extracted);
@@ -124,6 +134,8 @@ class JobUpsertAndDeduplicationHardeningTest {
                 .canonicalUrl("https://acme.com/jobs/123")
                 .title("Backend Engineer")
                 .company("Acme")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .source("COMPANY_WEBSITE")
                 .status(JobStatus.SAVED)
                 .build();
@@ -153,7 +165,8 @@ class JobUpsertAndDeduplicationHardeningTest {
                 .externalId("REM-500")
                 .title("Java Engineer")
                 .company("Acme")
-                .location(null) // incoming null location
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .salaryMin(null) // incoming null salaryMin
                 .source("REMOTIVE")
                 .build();
@@ -162,7 +175,8 @@ class JobUpsertAndDeduplicationHardeningTest {
         ExtractedJob extracted = ExtractedJob.builder()
                 .title("Java Engineer")
                 .company("Acme")
-                .location(null)
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .salaryMin(null)
                 .source("REMOTIVE")
                 .build();
@@ -173,7 +187,8 @@ class JobUpsertAndDeduplicationHardeningTest {
                 .externalId("REM-500")
                 .title("Java Engineer")
                 .company("Acme")
-                .location("Bangalore") // existing valuable location
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .salaryMin(new BigDecimal("120000")) // existing valuable salary
                 .source("REMOTIVE")
                 .status(JobStatus.SAVED)
@@ -188,8 +203,8 @@ class JobUpsertAndDeduplicationHardeningTest {
         assertEquals(0, response.getUpdatedJobs());
         assertEquals(1, response.getUnchangedJobs());
 
-        // Verify existing location and salary were NOT overwritten with null!
-        assertEquals("Bangalore", existingJob.getLocation());
+        // Verify existing salary was NOT overwritten with null!
+        assertEquals("Bengaluru, India", existingJob.getLocation());
         assertEquals(new BigDecimal("120000"), existingJob.getSalaryMin());
     }
 
@@ -204,6 +219,8 @@ class JobUpsertAndDeduplicationHardeningTest {
                 .externalId("REM-777")
                 .title("Java Engineer")
                 .company("Acme")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .description("New updated job description with Spring Boot details.")
                 .source("REMOTIVE")
                 .build();
@@ -212,6 +229,8 @@ class JobUpsertAndDeduplicationHardeningTest {
         ExtractedJob extracted = ExtractedJob.builder()
                 .title("Java Engineer")
                 .company("Acme")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .description("New updated job description with Spring Boot details.")
                 .source("REMOTIVE")
                 .build();
@@ -222,6 +241,8 @@ class JobUpsertAndDeduplicationHardeningTest {
                 .externalId("REM-777")
                 .title("Java Engineer")
                 .company("Acme")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .description("Old short description.")
                 .source("REMOTIVE")
                 .status(JobStatus.SAVED)
@@ -252,6 +273,8 @@ class JobUpsertAndDeduplicationHardeningTest {
                 .externalId("REM-CONCURRENT")
                 .title("React Developer")
                 .company("Acme")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .source("REMOTIVE")
                 .build();
         when(source.discover(any())).thenReturn(List.of(rawListing));
@@ -259,6 +282,8 @@ class JobUpsertAndDeduplicationHardeningTest {
         ExtractedJob extracted = ExtractedJob.builder()
                 .title("React Developer")
                 .company("Acme")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .source("REMOTIVE")
                 .build();
         when(extractionPipeline.extractAndNormalize(any(), eq("REMOTIVE"))).thenReturn(extracted);
@@ -277,6 +302,8 @@ class JobUpsertAndDeduplicationHardeningTest {
                 .externalId("REM-CONCURRENT")
                 .title("React Developer")
                 .company("Acme")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
                 .source("REMOTIVE")
                 .status(JobStatus.SAVED)
                 .build();

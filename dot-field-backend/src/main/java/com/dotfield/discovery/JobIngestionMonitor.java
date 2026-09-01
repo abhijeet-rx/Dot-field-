@@ -87,6 +87,7 @@ public class JobIngestionMonitor {
                 .durationMs(durationMs)
                 .sourcesProcessed(sourceResults.size())
                 .jobsFetched(response.getDiscovered())
+                .indiaFiltered(response.getIndiaFiltered())
                 .jobsInserted(response.getNewJobs())
                 .jobsUpdated(response.getUpdatedJobs())
                 .duplicates(response.getDuplicates() + response.getUnchangedJobs())

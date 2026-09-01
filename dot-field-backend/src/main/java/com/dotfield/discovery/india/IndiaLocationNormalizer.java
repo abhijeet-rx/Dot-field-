@@ -63,7 +63,7 @@ public class IndiaLocationNormalizer {
         if (rawLocation == null || rawLocation.isBlank()) {
             return NormalizedLocation.builder()
                     .rawLocation(rawLocation)
-                    .isIndiaRelevant(true)
+                    .isIndiaRelevant(false)
                     .isRemote(false)
                     .build();
         }

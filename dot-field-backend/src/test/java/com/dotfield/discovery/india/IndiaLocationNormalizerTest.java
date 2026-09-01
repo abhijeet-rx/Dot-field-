@@ -84,12 +84,12 @@ class IndiaLocationNormalizerTest {
     }
 
     @Test
-    @DisplayName("Null or blank location returns India relevant for unconstrained listings")
-    void nullOrBlankLocationReturnsIndiaRelevant() {
+    @DisplayName("Null or blank location returns non-India relevant (insufficient evidence)")
+    void nullOrBlankLocationReturnsNonIndiaRelevant() {
         NormalizedLocation normNull = normalizer.normalize(null);
-        assertThat(normNull.isIndiaRelevant()).isTrue();
+        assertThat(normNull.isIndiaRelevant()).isFalse();
 
         NormalizedLocation normBlank = normalizer.normalize("   ");
-        assertThat(normBlank.isIndiaRelevant()).isTrue();
+        assertThat(normBlank.isIndiaRelevant()).isFalse();
     }
 }

@@ -9,7 +9,6 @@ import com.dotfield.entity.JobStatus;
 import com.dotfield.exception.BadRequestException;
 import com.dotfield.extractor.ExtractedJob;
 import com.dotfield.extractor.JobExtractionPipeline;
-
 import com.dotfield.repository.JobRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -148,6 +147,7 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
 
         JobDiscoveryResponse response = JobDiscoveryResponse.builder()
                 .discovered(result.getDiscovered())
+                .indiaFiltered(result.getIndiaFiltered())
                 .newJobs(result.getNewJobs())
                 .updatedJobs(result.getUpdatedJobs())
                 .unchangedJobs(result.getUnchangedJobs())
@@ -174,6 +174,7 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
         List<SourceDiscoveryResult> sourceResults = new ArrayList<>();
 
         int totalDiscovered = 0;
+        int totalIndiaFiltered = 0;
         int totalNewJobs = 0;
         int totalUpdatedJobs = 0;
         int totalUnchangedJobs = 0;
@@ -185,6 +186,7 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
             sourceResults.add(result);
 
             totalDiscovered += result.getDiscovered();
+            totalIndiaFiltered += result.getIndiaFiltered();
             totalNewJobs += result.getNewJobs();
             totalUpdatedJobs += result.getUpdatedJobs();
             totalUnchangedJobs += result.getUnchangedJobs();
@@ -194,6 +196,7 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
 
         JobDiscoveryResponse response = JobDiscoveryResponse.builder()
                 .discovered(totalDiscovered)
+                .indiaFiltered(totalIndiaFiltered)
                 .newJobs(totalNewJobs)
                 .updatedJobs(totalUpdatedJobs)
                 .unchangedJobs(totalUnchangedJobs)
@@ -219,11 +222,13 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
                     .status("FAILED")
                     .errorMessage(e.getMessage())
                     .discovered(0)
+                    .indiaFiltered(0)
                     .failed(1)
                     .build();
         }
 
         int totalDiscovered = rawListings.size();
+        int indiaFiltered = 0;
         int newJobs = 0;
         int updatedJobs = 0;
         int unchangedJobs = 0;
@@ -234,9 +239,11 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
 
         for (RawJobListing rawListing : rawListings) {
             try {
+                // Rule 8: Filter non-India jobs BEFORE expensive extraction where possible
                 if (!indiaJobFilter.isIndiaRelevant(rawListing)) {
-                    log.debug("Skipping non-India relevant listing (title='{}', location='{}') from source: {}",
+                    log.debug("Pre-extraction India filter rejected listing (title='{}', location='{}') from source: {}",
                             rawListing.getTitle(), rawListing.getLocation(), source.getSourceName());
+                    indiaFiltered++;
                     continue;
                 }
 
@@ -253,6 +260,7 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
                     case NEW -> newJobs++;
                     case UPDATED -> updatedJobs++;
                     case UNCHANGED -> unchangedJobs++;
+                    case INDIA_FILTERED -> indiaFiltered++;
                 }
             } catch (Exception e) {
                 log.error("Failed to process listing from source: {}", source.getSourceName(), e);
@@ -260,8 +268,8 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
             }
         }
 
-        log.info("Job discovery completed for source: {} -> Discovered: {}, New: {}, Updated: {}, Unchanged: {}, Duplicates: {}, Failed: {}",
-                source.getSourceName(), totalDiscovered, newJobs, updatedJobs, unchangedJobs, duplicates, failed);
+        log.info("Job discovery completed for source: {} -> Discovered: {}, India Filtered: {}, New: {}, Updated: {}, Unchanged: {}, Duplicates: {}, Failed: {}",
+                source.getSourceName(), totalDiscovered, indiaFiltered, newJobs, updatedJobs, unchangedJobs, duplicates, failed);
 
         expireStaleJobsForSource(source.getSourceName());
 
@@ -269,6 +277,7 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
                 .source(source.getSourceName())
                 .status("SUCCESS")
                 .discovered(totalDiscovered)
+                .indiaFiltered(indiaFiltered)
                 .newJobs(newJobs)
                 .updatedJobs(updatedJobs)
                 .unchangedJobs(unchangedJobs)
@@ -318,11 +327,18 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
         String sourceName = rawListing.getSource() != null ? rawListing.getSource() : defaultSource;
         ExtractedJob extractedJob = extractionPipeline.extractAndNormalize(rawData, sourceName);
 
+        // Rule 9: Re-evaluate normalized location post-extraction
         var normalizedLoc = locationNormalizer.normalize(extractedJob.getLocation() != null ? extractedJob.getLocation() : rawListing.getLocation());
         extractedJob.setNormalizedCountry(normalizedLoc.getNormalizedCountry());
         extractedJob.setNormalizedCity(normalizedLoc.getNormalizedCity());
         extractedJob.setRemoteCountry(normalizedLoc.getRemoteCountry());
         extractedJob.setIsIndiaRelevant(normalizedLoc.isIndiaRelevant());
+
+        if (!indiaJobFilter.isIndiaRelevant(extractedJob)) {
+            log.debug("Post-extraction India filter rejected listing (title='{}', location='{}')",
+                    extractedJob.getTitle(), extractedJob.getLocation());
+            return ProcessResult.INDIA_FILTERED;
+        }
 
         String canonicalUrl = deduplicationService.canonicalizeUrl(extractedJob.getJobUrl());
         String fingerprint = deduplicationService.generateFingerprint(
@@ -348,17 +364,14 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
             Job existingJob = existingOpt.get();
             existingJob.setLastSeenAt(now);
             existingJob.setLastDiscoveredAt(now);
-            if (existingJob.getFirstSeenAt() == null) {
-                existingJob.setFirstSeenAt(existingJob.getCreatedAt() != null ? existingJob.getCreatedAt() : now);
-            }
 
             boolean changed = updateJobFieldsIfChanged(existingJob, extractedJob, rawListing.getExternalId(), canonicalUrl, fingerprint);
-
             persistenceHelper.updateExistingJob(existingJob);
+
             return changed ? ProcessResult.UPDATED : ProcessResult.UNCHANGED;
         }
 
-        // Create new job
+        // New Job Creation
         Job newJob = Job.builder()
                 .externalId(rawListing.getExternalId())
                 .title(extractedJob.getTitle())
@@ -375,11 +388,11 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
                 .source(extractedJob.getSource())
                 .employmentType(extractedJob.getEmploymentType())
                 .remoteType(extractedJob.getRemoteType())
-                .status(JobStatus.ACTIVE)
                 .salaryMin(extractedJob.getSalaryMin())
                 .salaryMax(extractedJob.getSalaryMax())
                 .currency(extractedJob.getCurrency())
                 .postedDate(extractedJob.getPostedDate())
+                .status(JobStatus.ACTIVE)
                 .firstSeenAt(now)
                 .lastSeenAt(now)
                 .lastDiscoveredAt(now)
@@ -389,9 +402,8 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
             persistenceHelper.saveNewJob(newJob);
             return ProcessResult.NEW;
         } catch (org.springframework.dao.DataIntegrityViolationException e) {
-            log.info("Concurrent duplicate detected. Re-fetching existing job for source={}, externalId={}, canonicalUrl={}",
-                    extractedJob.getSource(), rawListing.getExternalId(), canonicalUrl);
-
+            log.warn("DataIntegrityViolationException on saveNewJob for source: {}, externalId: {}. Executing fallback re-fetch.",
+                    extractedJob.getSource(), rawListing.getExternalId());
             Optional<Job> fallbackOpt = deduplicationService.findExistingJob(
                     extractedJob.getSource(),
                     rawListing.getExternalId(),
@@ -401,22 +413,15 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
                     extractedJob.getLocation(),
                     extractedJob.getDescription()
             );
-
             if (fallbackOpt.isPresent()) {
-                Job fallbackJob = fallbackOpt.get();
-                fallbackJob.setLastSeenAt(now);
-                fallbackJob.setLastDiscoveredAt(now);
-                if (fallbackJob.getFirstSeenAt() == null) {
-                    fallbackJob.setFirstSeenAt(now);
-                }
-                boolean changed = updateJobFieldsIfChanged(fallbackJob, extractedJob, rawListing.getExternalId(), canonicalUrl, fingerprint);
-                persistenceHelper.updateExistingJob(fallbackJob);
+                Job existingJob = fallbackOpt.get();
+                existingJob.setLastSeenAt(now);
+                existingJob.setLastDiscoveredAt(now);
+                boolean changed = updateJobFieldsIfChanged(existingJob, extractedJob, rawListing.getExternalId(), canonicalUrl, fingerprint);
+                persistenceHelper.updateExistingJob(existingJob);
                 return changed ? ProcessResult.UPDATED : ProcessResult.UNCHANGED;
             }
-
-            log.warn("Could not re-fetch job after constraint violation. source={}, externalId={}",
-                    extractedJob.getSource(), rawListing.getExternalId());
-            return ProcessResult.UNCHANGED;
+            throw e;
         }
     }
 
@@ -516,7 +521,7 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
     }
 
     private enum ProcessResult {
-        NEW, UPDATED, UNCHANGED
+        NEW, UPDATED, UNCHANGED, INDIA_FILTERED
     }
 
 }
