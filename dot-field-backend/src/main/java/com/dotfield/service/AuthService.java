@@ -88,7 +88,7 @@ public class AuthService {
                 .build();
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public AuthResponse login(LoginRequest request) {
         String normalizedEmail = request.getEmail().trim().toLowerCase();
 
@@ -97,6 +97,15 @@ public class AuthService {
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             throw new UnauthorizedException("Invalid email or password");
+        }
+
+        // Auto-promote configured initial admin email to ADMIN role on login if needed
+        if (initialAdminEmail != null && !initialAdminEmail.isBlank() 
+                && initialAdminEmail.trim().equalsIgnoreCase(normalizedEmail) 
+                && user.getRole() != Role.ADMIN) {
+            user.setRole(Role.ADMIN);
+            user = userRepository.save(user);
+            log.info("Promoted user {} to ADMIN role on login", normalizedEmail);
         }
 
         Optional<Profile> profileOpt = profileRepository.findByUserId(user.getId());
@@ -111,7 +120,7 @@ public class AuthService {
                 .profileId(profileId)
                 .build();
 
-        log.info("User ID: {} logged in successfully", user.getId());
+        log.info("User ID: {} logged in successfully with Role: {}", user.getId(), user.getRole());
 
         return AuthResponse.builder()
                 .token(token)

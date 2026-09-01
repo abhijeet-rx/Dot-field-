@@ -56,20 +56,23 @@ class FullJobIntelligencePipelineE2ETest {
     @BeforeEach
     void setUp() {
         jobRepository.deleteAll();
-        profileRepository.deleteAll();
-        userRepository.deleteAll();
 
-        adminUser = User.builder().email("admin@example.com").passwordHash("hash").role(Role.ADMIN).build();
-        adminUser = userRepository.save(adminUser);
+        adminUser = userRepository.findByEmailIgnoreCase("admin@example.com")
+                .orElseGet(() -> userRepository.save(User.builder().email("admin@example.com").passwordHash("hash").role(Role.ADMIN).build()));
         adminToken = jwtService.generateToken(adminUser.getId(), adminUser.getEmail(), adminUser.getRole());
 
-        candidateUser = User.builder().email("candidate@example.com").passwordHash("hash").role(Role.USER).build();
-        candidateUser = userRepository.save(candidateUser);
-        candidateProfile = Profile.builder().user(candidateUser).name("Candidate User").email("candidate@example.com").build();
-        candidateProfile.addSkill(Skill.builder().name("Java").category(SkillCategory.LANGUAGE).build());
-        candidateProfile.addSkill(Skill.builder().name("Spring Boot").category(SkillCategory.FRAMEWORK).build());
-        candidateProfile.addExperience(Experience.builder().company("Tech Co").role("Java Engineer").description("Built microservices with Spring Boot").build());
-        candidateProfile = profileRepository.save(candidateProfile);
+        candidateUser = userRepository.findByEmailIgnoreCase("candidate@example.com")
+                .orElseGet(() -> userRepository.save(User.builder().email("candidate@example.com").passwordHash("hash").role(Role.USER).build()));
+
+        candidateProfile = profileRepository.findByUserId(candidateUser.getId())
+                .orElseGet(() -> {
+                    Profile p = Profile.builder().user(candidateUser).name("Candidate User").email("candidate@example.com").build();
+                    p.addSkill(Skill.builder().name("Java").category(SkillCategory.LANGUAGE).build());
+                    p.addSkill(Skill.builder().name("Spring Boot").category(SkillCategory.FRAMEWORK).build());
+                    p.addExperience(Experience.builder().company("Tech Co").role("Java Engineer").description("Built microservices with Spring Boot").build());
+                    return profileRepository.save(p);
+                });
+
         candidateToken = jwtService.generateToken(candidateUser.getId(), candidateUser.getEmail(), candidateUser.getRole());
     }
 

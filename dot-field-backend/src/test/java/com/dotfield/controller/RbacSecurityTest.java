@@ -51,22 +51,21 @@ class RbacSecurityTest {
     @BeforeEach
     void setUp() {
         jobRepository.deleteAll();
-        userRepository.deleteAll();
 
-        User user = User.builder()
-                .email("user@example.com")
-                .passwordHash("hash")
-                .role(Role.USER)
-                .build();
-        user = userRepository.save(user);
+        User user = userRepository.findByEmailIgnoreCase("user@example.com")
+                .orElseGet(() -> userRepository.save(User.builder()
+                        .email("user@example.com")
+                        .passwordHash("hash")
+                        .role(Role.USER)
+                        .build()));
         userToken = jwtService.generateToken(user.getId(), user.getEmail(), user.getRole());
 
-        User admin = User.builder()
-                .email("admin@example.com")
-                .passwordHash("hash")
-                .role(Role.ADMIN)
-                .build();
-        admin = userRepository.save(admin);
+        User admin = userRepository.findByEmailIgnoreCase("admin@example.com")
+                .orElseGet(() -> userRepository.save(User.builder()
+                        .email("admin@example.com")
+                        .passwordHash("hash")
+                        .role(Role.ADMIN)
+                        .build()));
         adminToken = jwtService.generateToken(admin.getId(), admin.getEmail(), admin.getRole());
 
         testJob = Job.builder()
