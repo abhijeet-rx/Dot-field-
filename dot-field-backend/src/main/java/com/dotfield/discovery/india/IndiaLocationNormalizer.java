@@ -9,6 +9,8 @@ import java.util.regex.Pattern;
  * Normalizes raw location strings into structured {@link NormalizedLocation} models.
  * Determines deterministic India relevance based strictly on Indian cities, states,
  * and explicit India-remote eligibility patterns.
+ * <p>
+ * Does NOT classify generic English preposition "in" (e.g. "Engineer in London") as India.
  */
 @Component
 public class IndiaLocationNormalizer {
@@ -50,12 +52,15 @@ public class IndiaLocationNormalizer {
         }
     }
 
+    // Explicit India patterns (Do NOT include generic standalone "in" which causes false positives for "in London")
     private static final Pattern INDIA_COUNTRY_PATTERN = Pattern.compile(
-            "\\b(india|in|bharat)\\b", Pattern.CASE_INSENSITIVE
+            "(^|\\b)(india|bharat|india-based)(\\b|$)|\\b(india\\s*-\\s*remote|remote\\s*-\\s*india|remote\\s*\\(india\\)|anywhere\\s+in\\s+india)\\b|(^|,|\\s)IN($|,|\\s)",
+            Pattern.CASE_INSENSITIVE
     );
 
-    private static final Pattern FOREIGN_COUNTRY_PATTERN = Pattern.compile(
-            "\\b(usa|united states|us|uk|united kingdom|britain|germany|canada|singapore|australia|japan|france)\\b",
+    // Foreign countries and major international cities
+    private static final Pattern FOREIGN_LOCATION_PATTERN = Pattern.compile(
+            "\\b(usa|united states|us|uk|united kingdom|britain|germany|canada|singapore|australia|japan|france|london|san francisco|new york|toronto|berlin|sydney|tokyo|worldwide|global remote)\\b",
             Pattern.CASE_INSENSITIVE
     );
 
@@ -72,9 +77,8 @@ public class IndiaLocationNormalizer {
         String lower = trimmed.toLowerCase();
 
         boolean isRemote = lower.contains("remote") || lower.contains("work from home") || lower.contains("wfh") || lower.contains("anywhere");
-        boolean hasExplicitIndia = INDIA_COUNTRY_PATTERN.matcher(lower).find();
 
-        // 1. Check for Indian city matches
+        // 1. Check for Indian city matches first
         String matchedCity = null;
         for (Map.Entry<String, String> entry : CITY_NORMALIZATION_MAP.entrySet()) {
             String variant = entry.getKey();
@@ -84,11 +88,13 @@ public class IndiaLocationNormalizer {
             }
         }
 
-        // 2. Foreign location check (takes precedence if explicitly foreign e.g. "San Francisco, USA")
-        boolean hasForeignCountry = FOREIGN_COUNTRY_PATTERN.matcher(lower).find();
-        if (hasForeignCountry && matchedCity == null && !hasExplicitIndia) {
-            String foreignCountry = lower.contains("usa") || lower.contains("united states") || lower.contains("us") ? "US"
-                    : lower.contains("uk") || lower.contains("united kingdom") ? "GB" : "FOREIGN";
+        boolean hasExplicitIndia = INDIA_COUNTRY_PATTERN.matcher(lower).find();
+        boolean hasForeignLocation = FOREIGN_LOCATION_PATTERN.matcher(lower).find();
+
+        // 2. Foreign location takes precedence if explicitly foreign (e.g., "London, UK", "San Francisco, USA", "Developer in New York")
+        if (hasForeignLocation && !hasExplicitIndia && matchedCity == null) {
+            String foreignCountry = lower.contains("usa") || lower.contains("united states") || lower.contains("san francisco") || lower.contains("new york") ? "US"
+                    : lower.contains("uk") || lower.contains("united kingdom") || lower.contains("london") ? "GB" : "FOREIGN";
             return NormalizedLocation.builder()
                     .rawLocation(trimmed)
                     .normalizedCountry(foreignCountry)
@@ -98,7 +104,7 @@ public class IndiaLocationNormalizer {
         }
 
         // 3. Indian location evaluation
-        if (matchedCity != null || hasExplicitIndia) {
+        if ((matchedCity != null || hasExplicitIndia) && !hasForeignLocation) {
             return NormalizedLocation.builder()
                     .rawLocation(trimmed)
                     .normalizedCountry("IN")
@@ -106,6 +112,15 @@ public class IndiaLocationNormalizer {
                     .isRemote(isRemote)
                     .remoteCountry(isRemote ? "IN" : null)
                     .isIndiaRelevant(true)
+                    .build();
+        }
+
+        // Conflict resolution: If explicit foreign location exists alongside Indian keyword, foreign location wins
+        if (hasForeignLocation) {
+            return NormalizedLocation.builder()
+                    .rawLocation(trimmed)
+                    .isRemote(isRemote)
+                    .isIndiaRelevant(false)
                     .build();
         }
 

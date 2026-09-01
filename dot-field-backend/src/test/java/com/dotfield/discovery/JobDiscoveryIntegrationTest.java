@@ -2,6 +2,7 @@ package com.dotfield.discovery;
 
 import com.dotfield.dto.JobDiscoveryRequest;
 import com.dotfield.dto.JobDiscoveryResponse;
+import com.dotfield.dto.RawJobListing;
 import com.dotfield.entity.Job;
 import com.dotfield.entity.JobStatus;
 import com.dotfield.repository.JobRepository;
@@ -9,12 +10,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.*;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 /**
  * Integration tests that use the real H2 persistence layer (ddl-auto=create-drop)
@@ -30,9 +34,30 @@ class JobDiscoveryIntegrationTest {
     @Autowired
     private JobRepository jobRepository;
 
+    @MockBean
+    private JobSource mockJobSource;
+
+    @MockBean
+    private JobSourceRegistry sourceRegistry;
+
     @BeforeEach
     void setUp() {
         jobRepository.deleteAll();
+        when(sourceRegistry.getRequiredSource("COMPANY_WEBSITE")).thenReturn(mockJobSource);
+        when(mockJobSource.getSourceName()).thenReturn("COMPANY_WEBSITE");
+
+        RawJobListing testListing = RawJobListing.builder()
+                .externalId("JOB-CW-101")
+                .title("Java Backend Developer")
+                .company("Acme Corp")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
+                .source("COMPANY_WEBSITE")
+                .jobUrl("https://acme.com/jobs/101")
+                .description("Looking for experienced Java and Spring Boot backend developers in Bengaluru.")
+                .build();
+
+        when(mockJobSource.discover(any())).thenReturn(List.of(testListing));
     }
 
     /**
@@ -124,9 +149,10 @@ class JobDiscoveryIntegrationTest {
                 .externalId("JOB-CW-101")
                 .title("Java Backend Developer")
                 .company("Acme Corp")
-                .location("Bangalore")
-                .description("Looking for experienced Java and Spring Boot backend developers.")
-                .jobUrl("https://acme.com/careers/jobs/101")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
+                .description("Looking for experienced Java and Spring Boot backend developers in Bengaluru.")
+                .jobUrl("https://acme.com/jobs/101")
                 .source("COMPANY_WEBSITE")
                 .status(JobStatus.APPLIED)
                 .firstSeenAt(now)
@@ -202,9 +228,10 @@ class JobDiscoveryIntegrationTest {
                     .externalId("JOB-CW-101")
                     .title("Java Backend Developer")
                     .company("Acme Corp")
-                    .location("Bangalore")
-                    .description("Looking for experienced Java and Spring Boot backend developers.")
-                    .jobUrl("https://acme.com/careers/jobs/101")
+                    .location("Bengaluru, India")
+                    .isIndiaRelevant(true)
+                    .description("Looking for experienced Java and Spring Boot backend developers in Bengaluru.")
+                    .jobUrl("https://acme.com/jobs/101")
                     .source("COMPANY_WEBSITE")
                     .status(status)
                     .build();

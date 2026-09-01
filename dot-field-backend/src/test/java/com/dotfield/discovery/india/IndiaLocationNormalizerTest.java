@@ -67,10 +67,26 @@ class IndiaLocationNormalizerTest {
             "London, UK",
             "Berlin, Germany",
             "Toronto, Canada",
-            "Singapore"
+            "Singapore",
+            "Sydney, Australia",
+            "Tokyo, Japan",
+            "New York, USA"
     })
     @DisplayName("Foreign locations evaluate as non-India relevant")
     void foreignLocationsEvaluateAsNonIndiaRelevant(String location) {
+        NormalizedLocation norm = normalizer.normalize(location);
+        assertThat(norm.isIndiaRelevant()).isFalse();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "Software Engineer in London",
+            "Developer in New York",
+            "Engineer in Toronto",
+            "Senior Backend Engineer in Berlin"
+    })
+    @DisplayName("Regression Test — English preposition 'in' before foreign cities must NOT be classified as India")
+    void englishPrepositionInBeforeForeignCitiesMustNotBeClassifiedAsIndia(String location) {
         NormalizedLocation norm = normalizer.normalize(location);
         assertThat(norm.isIndiaRelevant()).isFalse();
     }
@@ -81,6 +97,9 @@ class IndiaLocationNormalizerTest {
         NormalizedLocation norm = normalizer.normalize("Remote");
         assertThat(norm.isRemote()).isTrue();
         assertThat(norm.isIndiaRelevant()).isFalse();
+
+        NormalizedLocation normWorldwide = normalizer.normalize("Worldwide");
+        assertThat(normWorldwide.isIndiaRelevant()).isFalse();
     }
 
     @Test

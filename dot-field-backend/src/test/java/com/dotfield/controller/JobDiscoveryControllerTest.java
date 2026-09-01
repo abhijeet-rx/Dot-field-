@@ -1,6 +1,10 @@
 package com.dotfield.controller;
 
+import com.dotfield.discovery.JobSource;
+import com.dotfield.discovery.JobSourceRegistry;
 import com.dotfield.dto.JobDiscoveryRequest;
+import com.dotfield.dto.RawJobListing;
+import com.dotfield.exception.BadRequestException;
 import com.dotfield.repository.JobRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -8,12 +12,16 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
-import org.springframework.security.test.context.support.WithMockUser;
+import java.util.List;
 
 import static org.hamcrest.Matchers.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -32,9 +40,31 @@ class JobDiscoveryControllerTest {
     @Autowired
     private JobRepository jobRepository;
 
+    @MockBean
+    private JobSource mockJobSource;
+
+    @MockBean
+    private JobSourceRegistry sourceRegistry;
+
     @BeforeEach
     void setUp() {
         jobRepository.deleteAll();
+        when(sourceRegistry.getRequiredSource("COMPANY_WEBSITE")).thenReturn(mockJobSource);
+        when(sourceRegistry.getRequiredSource("LINKEDIN")).thenThrow(new BadRequestException("Unsupported job source: LINKEDIN"));
+        when(mockJobSource.getSourceName()).thenReturn("COMPANY_WEBSITE");
+
+        RawJobListing testListing = RawJobListing.builder()
+                .externalId("JOB-CW-101")
+                .title("Java Backend Developer")
+                .company("Acme Corp")
+                .location("Bengaluru, India")
+                .isIndiaRelevant(true)
+                .source("COMPANY_WEBSITE")
+                .jobUrl("https://acme.com/jobs/101")
+                .description("Java Spring Boot developer role in Bengaluru.")
+                .build();
+
+        when(mockJobSource.discover(any())).thenReturn(List.of(testListing));
     }
 
     @Test
@@ -86,7 +116,6 @@ class JobDiscoveryControllerTest {
 
     @Test
     void discoverJobs_maxResultsZero_returns400BadRequest() throws Exception {
-        // maxResults = 0 violates @Min(1)
         String json = "{\"source\": \"COMPANY_WEBSITE\", \"maxResults\": 0}";
 
         mockMvc.perform(post("/jobs/discover")

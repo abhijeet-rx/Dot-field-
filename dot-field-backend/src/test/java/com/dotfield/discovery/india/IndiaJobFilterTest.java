@@ -1,6 +1,7 @@
 package com.dotfield.discovery.india;
 
 import com.dotfield.dto.RawJobListing;
+import com.dotfield.extractor.ExtractedJob;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -55,6 +56,38 @@ class IndiaJobFilterTest {
     }
 
     @Test
+    @DisplayName("Title location conflict — Title says Bangalore but Location says London, UK must be rejected")
+    void titleLocationConflict_explicitForeignLocationWins() {
+        RawJobListing rawJob = RawJobListing.builder()
+                .title("Senior Engineer - Bangalore")
+                .company("Global Corp")
+                .location("London, UK")
+                .build();
+
+        assertThat(indiaJobFilter.isIndiaRelevant(rawJob)).isFalse();
+
+        ExtractedJob extractedJob = ExtractedJob.builder()
+                .title("Senior Engineer - Bangalore")
+                .company("Global Corp")
+                .location("London, UK")
+                .build();
+
+        assertThat(indiaJobFilter.isIndiaRelevant(extractedJob)).isFalse();
+    }
+
+    @Test
+    @DisplayName("Regression Test — 'Software Engineer in London' must be rejected")
+    void softwareEngineerInLondon_rejected() {
+        RawJobListing rawJob = RawJobListing.builder()
+                .title("Software Engineer")
+                .company("Global Corp")
+                .location("Software Engineer in London")
+                .build();
+
+        assertThat(indiaJobFilter.isIndiaRelevant(rawJob)).isFalse();
+    }
+
+    @Test
     @DisplayName("Ambiguous Remote job without India eligibility is rejected by IndiaJobFilter")
     void ambiguousRemoteRejected() {
         RawJobListing rawJob = RawJobListing.builder()
@@ -74,6 +107,18 @@ class IndiaJobFilterTest {
                 .company("Global Tech")
                 .location("Remote")
                 .currency("INR")
+                .build();
+
+        assertThat(indiaJobFilter.isIndiaRelevant(rawJob)).isFalse();
+    }
+
+    @Test
+    @DisplayName("Indian company name alone with generic Remote location is NOT sufficient to accept job")
+    void indianCompanyNameAloneNotSufficient() {
+        RawJobListing rawJob = RawJobListing.builder()
+                .title("Product Manager")
+                .company("Tata Consultancy Services")
+                .location("Remote")
                 .build();
 
         assertThat(indiaJobFilter.isIndiaRelevant(rawJob)).isFalse();
