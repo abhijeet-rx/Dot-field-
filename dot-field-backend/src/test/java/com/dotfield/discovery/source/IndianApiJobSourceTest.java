@@ -2,6 +2,7 @@ package com.dotfield.discovery.source;
 
 import com.dotfield.dto.JobDiscoveryRequest;
 import com.dotfield.dto.RawJobListing;
+import com.dotfield.entity.RemoteType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -23,7 +24,7 @@ class IndianApiJobSourceTest {
     void setUp() {
         RestClient.Builder builder = RestClient.builder();
         mockServer = MockRestServiceServer.bindTo(builder).build();
-        source = new IndianApiJobSource("https://indianapi.in/jobs", "test-api-key", builder.build());
+        source = new IndianApiJobSource("https://jobs.indianapi.in/jobs", "test-api-key", builder.build());
     }
 
     @Test
@@ -35,7 +36,7 @@ class IndianApiJobSourceTest {
 
     @Test
     void discover_missingApiKey_returnsEmptyList() {
-        IndianApiJobSource unconfiguredSource = new IndianApiJobSource("https://indianapi.in/jobs", "", RestClient.builder().build());
+        IndianApiJobSource unconfiguredSource = new IndianApiJobSource("https://jobs.indianapi.in/jobs", "", RestClient.builder().build());
         List<RawJobListing> listings = unconfiguredSource.discover(JobDiscoveryRequest.builder().source("INDIANAPI").build());
         assertNotNull(listings);
         assertTrue(listings.isEmpty());
@@ -48,17 +49,17 @@ class IndianApiJobSourceTest {
                   "jobs": [
                     {
                       "id": "IND-101",
-                      "title": "Java Developer",
+                      "job_title": "Java Developer",
                       "company": "TCS",
                       "location": "Bengaluru, India",
-                      "description": "Building microservices",
-                      "job_url": "https://indianapi.in/job/101"
+                      "job_description": "Building microservices",
+                      "apply_link": "https://jobs.indianapi.in/job/101"
                     }
                   ]
                 }
                 """;
 
-        mockServer.expect(requestTo(org.hamcrest.Matchers.containsString("https://indianapi.in/jobs")))
+        mockServer.expect(requestTo(org.hamcrest.Matchers.containsString("https://jobs.indianapi.in/jobs")))
                 .andRespond(withSuccess(jsonResponse, MediaType.APPLICATION_JSON));
 
         JobDiscoveryRequest request = JobDiscoveryRequest.builder()
@@ -77,11 +78,40 @@ class IndianApiJobSourceTest {
         assertEquals("TCS", job.getCompany());
         assertEquals("Bengaluru, India", job.getLocation());
         assertEquals("INDIANAPI", job.getSource());
+        assertNull(job.getCurrency()); // Currency must be null if absent
+        assertNull(job.getEmploymentType()); // Employment type must be null if absent
+    }
+
+    @Test
+    void discover_missingLocation_leavesLocationNull() {
+        String jsonResponse = """
+                {
+                  "jobs": [
+                    {
+                      "id": "IND-102",
+                      "job_title": "Python Developer",
+                      "company": "Infosys",
+                      "job_description": "Django backend"
+                    }
+                  ]
+                }
+                """;
+
+        mockServer.expect(requestTo(org.hamcrest.Matchers.containsString("https://jobs.indianapi.in/jobs")))
+                .andRespond(withSuccess(jsonResponse, MediaType.APPLICATION_JSON));
+
+        JobDiscoveryRequest request = JobDiscoveryRequest.builder().source("INDIANAPI").build();
+        List<RawJobListing> listings = source.discover(request);
+
+        assertNotNull(listings);
+        assertEquals(1, listings.size());
+        assertNull(listings.get(0).getLocation()); // Location must remain null, NOT "India"
+        assertNull(listings.get(0).getRemoteType()); // RemoteType must remain null, NOT HYBRID
     }
 
     @Test
     void discover_httpServerError_returnsEmptyListWithoutCrashing() {
-        mockServer.expect(requestTo(org.hamcrest.Matchers.containsString("https://indianapi.in/jobs")))
+        mockServer.expect(requestTo(org.hamcrest.Matchers.containsString("https://jobs.indianapi.in/jobs")))
                 .andRespond(withServerError());
 
         JobDiscoveryRequest request = JobDiscoveryRequest.builder().source("INDIANAPI").build();

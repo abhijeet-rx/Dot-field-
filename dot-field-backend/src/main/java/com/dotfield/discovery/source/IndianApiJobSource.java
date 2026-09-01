@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.net.URLEncoder;
@@ -79,67 +80,81 @@ public class IndianApiJobSource implements JobSource {
             return List.of();
         }
 
-        String searchUrl = buildSearchUrl(request);
+        int max = (request != null && request.getMaxResults() != null) ? request.getMaxResults() : 50;
+        List<RawJobListing> rawJobs = new ArrayList<>();
+        int page = 1;
+
         log.info("Fetching job opportunities from IndianAPI...");
 
-        try {
-            String rawJson = restClient.get()
-                    .uri(searchUrl)
-                    .header("X-Api-Key", apiKey)
-                    .header("x-api-key", apiKey)
-                    .retrieve()
-                    .body(String.class);
+        while (rawJobs.size() < max) {
+            String searchUrl = buildSearchUrl(request, page);
+            try {
+                String rawJson = restClient.get()
+                        .uri(searchUrl)
+                        .header("X-Api-Key", apiKey.trim())
+                        .retrieve()
+                        .body(String.class);
 
-            if (rawJson == null || rawJson.isBlank()) {
-                log.info("IndianAPI returned empty body");
-                return List.of();
-            }
-
-            JsonNode root = objectMapper.readTree(rawJson);
-            JsonNode jobsNode = null;
-
-            if (root.isArray()) {
-                jobsNode = root;
-            } else if (root.has("jobs") && root.get("jobs").isArray()) {
-                jobsNode = root.get("jobs");
-            } else if (root.has("data") && root.get("data").isArray()) {
-                jobsNode = root.get("data");
-            } else if (root.has("results") && root.get("results").isArray()) {
-                jobsNode = root.get("results");
-            }
-
-            if (jobsNode == null || jobsNode.isEmpty()) {
-                log.info("IndianAPI returned zero job items");
-                return List.of();
-            }
-
-            int max = (request != null && request.getMaxResults() != null) ? request.getMaxResults() : 50;
-            List<RawJobListing> rawJobs = new ArrayList<>();
-
-            for (JsonNode item : jobsNode) {
-                if (rawJobs.size() >= max) {
+                if (rawJson == null || rawJson.isBlank()) {
                     break;
                 }
-                RawJobListing listing = mapToRawJob(item);
-                if (listing != null) {
-                    rawJobs.add(listing);
-                }
-            }
 
-            log.info("Successfully fetched and mapped {} jobs from IndianAPI", rawJobs.size());
-            return rawJobs;
-        } catch (Exception e) {
-            log.error("Failed to fetch jobs from IndianAPI: {}", e.getMessage());
-            return List.of();
+                JsonNode root = objectMapper.readTree(rawJson);
+                JsonNode jobsNode = null;
+
+                if (root.isArray()) {
+                    jobsNode = root;
+                } else if (root.has("jobs") && root.get("jobs").isArray()) {
+                    jobsNode = root.get("jobs");
+                } else if (root.has("data") && root.get("data").isArray()) {
+                    jobsNode = root.get("data");
+                } else if (root.has("results") && root.get("results").isArray()) {
+                    jobsNode = root.get("results");
+                }
+
+                if (jobsNode == null || jobsNode.isEmpty()) {
+                    break;
+                }
+
+                int fetchedThisPage = 0;
+                for (JsonNode item : jobsNode) {
+                    if (rawJobs.size() >= max) {
+                        break;
+                    }
+                    RawJobListing listing = mapToRawJob(item);
+                    if (listing != null) {
+                        rawJobs.add(listing);
+                        fetchedThisPage++;
+                    }
+                }
+
+                if (fetchedThisPage == 0 || jobsNode.size() < 20) {
+                    break;
+                }
+                page++;
+            } catch (HttpClientErrorException.TooManyRequests e) {
+                log.warn("IndianAPI rate limited (429). Stopping pagination safely.");
+                break;
+            } catch (Exception e) {
+                log.error("Failed to fetch jobs from IndianAPI: {}", e.getClass().getSimpleName() + " - " + e.getMessage());
+                break;
+            }
         }
+
+        log.info("Successfully fetched and mapped {} jobs from IndianAPI", rawJobs.size());
+        return rawJobs;
     }
 
-    private String buildSearchUrl(JobDiscoveryRequest request) {
+    private String buildSearchUrl(JobDiscoveryRequest request, int page) {
         StringBuilder sb = new StringBuilder(baseUrl);
         List<String> params = new ArrayList<>();
 
-        int limit = (request != null && request.getMaxResults() != null) ? request.getMaxResults() : 20;
+        int limit = (request != null && request.getMaxResults() != null) ? Math.min(request.getMaxResults(), 50) : 20;
         params.add("limit=" + limit);
+
+        if (page > 1) {
+            params.add("page=" + page);
+        }
 
         if (request != null && request.getKeyword() != null && !request.getKeyword().isBlank()) {
             params.add("title=" + encode(request.getKeyword().trim()));
@@ -169,10 +184,10 @@ public class IndianApiJobSource implements JobSource {
         String externalId = getText(node, "id", "job_id");
         String title = getText(node, "job_title", "title");
         String company = getText(node, "company", "company_name");
+        
+        // Missing location must remain null, NOT defaulted to "India"
         String location = getText(node, "location");
-        if (location == null || location.isBlank()) {
-            location = "India";
-        }
+
         String jobUrl = getText(node, "apply_link", "job_url", "link");
         String description = getText(node, "job_description", "description", "role_and_responsibility");
 
@@ -189,6 +204,7 @@ public class IndianApiJobSource implements JobSource {
 
         LocalDate postedDate = parseDate(postedDateStr);
         EmploymentType employmentType = parseEmploymentType(jobTypeStr);
+        RemoteType remoteType = parseRemoteType(location, title, description);
 
         Map<String, Object> rawData = new LinkedHashMap<>();
         if (externalId != null) rawData.put("id", externalId);
@@ -205,7 +221,8 @@ public class IndianApiJobSource implements JobSource {
                 .jobUrl(jobUrl)
                 .source(SOURCE_NAME)
                 .employmentType(employmentType)
-                .remoteType(location.toLowerCase().contains("remote") ? RemoteType.REMOTE : RemoteType.HYBRID)
+                .remoteType(remoteType)
+                .currency(null) // Do NOT hardcode INR
                 .postedDate(postedDate)
                 .rawData(rawData)
                 .build();
@@ -240,12 +257,25 @@ public class IndianApiJobSource implements JobSource {
 
     private EmploymentType parseEmploymentType(String typeStr) {
         if (typeStr == null || typeStr.isBlank()) {
-            return EmploymentType.FULL_TIME;
+            return null; // Do NOT default missing job_type to FULL_TIME
         }
-        String lower = typeStr.toLowerCase();
+        String lower = typeStr.toLowerCase().trim();
         if (lower.contains("part")) return EmploymentType.PART_TIME;
         if (lower.contains("contract") || lower.contains("freelance")) return EmploymentType.CONTRACT;
+        if (lower.contains("temp")) return EmploymentType.TEMPORARY;
         if (lower.contains("intern")) return EmploymentType.INTERNSHIP;
-        return EmploymentType.FULL_TIME;
+        if (lower.contains("full") || lower.contains("perm")) return EmploymentType.FULL_TIME;
+        return null;
+    }
+
+    private RemoteType parseRemoteType(String location, String title, String description) {
+        String combined = ((location != null ? location : "") + " " + (title != null ? title : "")).toLowerCase();
+        if (combined.isBlank()) {
+            return null;
+        }
+        if (combined.contains("remote")) return RemoteType.REMOTE;
+        if (combined.contains("hybrid")) return RemoteType.HYBRID;
+        if (combined.contains("onsite") || combined.contains("on-site") || combined.contains("office")) return RemoteType.ONSITE;
+        return null; // Do NOT guess HYBRID
     }
 }

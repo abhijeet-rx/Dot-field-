@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
@@ -26,7 +27,7 @@ import java.util.*;
 
 /**
  * Adapter for discovering jobs from Adzuna API (India Market).
- * Endpoint: {@code https://api.adzuna.com/1/api/jobs/in/search/1}
+ * Endpoint: {@code https://api.adzuna.com/v1/api/jobs/in/search/1}
  */
 @Slf4j
 @Component
@@ -42,7 +43,7 @@ public class AdzunaJobSource implements JobSource {
 
     @org.springframework.beans.factory.annotation.Autowired
     public AdzunaJobSource(
-            @Value("${job.sources.adzuna.base-url:https://api.adzuna.com/1/api/jobs/in/search}") String baseUrl,
+            @Value("${job.sources.adzuna.base-url:https://api.adzuna.com/v1/api/jobs/in/search}") String baseUrl,
             @Value("${job.sources.adzuna.app-id:}") String appId,
             @Value("${job.sources.adzuna.app-key:}") String appKey,
             @Value("${job.sources.adzuna.connect-timeout:5000}") int connectTimeout,
@@ -84,49 +85,66 @@ public class AdzunaJobSource implements JobSource {
             return List.of();
         }
 
-        String searchUrl = buildSearchUrl(request);
-        log.info("Fetching job opportunities from Adzuna API (India market): {}", searchUrl);
+        int max = (request != null && request.getMaxResults() != null) ? request.getMaxResults() : 50;
+        List<RawJobListing> rawJobs = new ArrayList<>();
+        int page = 1;
 
-        try {
-            AdzunaApiResponse response = restClient.get()
-                    .uri(searchUrl)
-                    .retrieve()
-                    .body(AdzunaApiResponse.class);
+        log.info("Fetching job opportunities from Adzuna API (India market)...");
 
-            if (response == null || response.getResults() == null || response.getResults().isEmpty()) {
-                log.info("Adzuna API returned zero jobs");
-                return List.of();
-            }
+        while (rawJobs.size() < max) {
+            String searchUrl = buildSearchUrl(request, page);
+            try {
+                AdzunaApiResponse response = restClient.get()
+                        .uri(searchUrl)
+                        .retrieve()
+                        .body(AdzunaApiResponse.class);
 
-            int max = (request != null && request.getMaxResults() != null) ? request.getMaxResults() : 50;
-            List<RawJobListing> rawJobs = new ArrayList<>();
-
-            for (AdzunaJobDto dto : response.getResults()) {
-                if (rawJobs.size() >= max) {
+                if (response == null || response.getResults() == null || response.getResults().isEmpty()) {
                     break;
                 }
-                RawJobListing listing = mapToRawJob(dto);
-                if (listing != null) {
-                    rawJobs.add(listing);
-                }
-            }
 
-            log.info("Successfully fetched and mapped {} jobs from Adzuna API", rawJobs.size());
-            return rawJobs;
-        } catch (Exception e) {
-            log.error("Failed to fetch jobs from Adzuna API: {}", e.getMessage());
-            return List.of();
+                int fetchedThisPage = 0;
+                for (AdzunaJobDto dto : response.getResults()) {
+                    if (rawJobs.size() >= max) {
+                        break;
+                    }
+                    RawJobListing listing = mapToRawJob(dto);
+                    if (listing != null) {
+                        rawJobs.add(listing);
+                        fetchedThisPage++;
+                    }
+                }
+
+                if (fetchedThisPage == 0 || response.getResults().size() < 20) {
+                    break; // No more results available
+                }
+                page++;
+            } catch (HttpClientErrorException.TooManyRequests e) {
+                log.warn("Adzuna API rate limited (429). Stopping pagination safely.");
+                break;
+            } catch (Exception e) {
+                log.error("Failed to fetch jobs from Adzuna API: {}", e.getClass().getSimpleName() + " - " + e.getMessage());
+                break;
+            }
         }
+
+        log.info("Successfully fetched and mapped {} jobs from Adzuna API", rawJobs.size());
+        return rawJobs;
     }
 
-    private String buildSearchUrl(JobDiscoveryRequest request) {
+    private String buildSearchUrl(JobDiscoveryRequest request, int page) {
         String base = baseUrl.trim();
         if (base.endsWith("/")) {
             base = base.substring(0, base.length() - 1);
         }
-        if (!base.endsWith("/1")) {
-            base = base + "/1";
+        
+        // Remove trailing page index if present
+        int lastSlash = base.lastIndexOf('/');
+        if (lastSlash != -1 && base.substring(lastSlash + 1).matches("\\d+")) {
+            base = base.substring(0, lastSlash);
         }
+
+        base = base + "/" + page;
 
         StringBuilder sb = new StringBuilder(base);
         List<String> params = new ArrayList<>();
@@ -165,11 +183,11 @@ public class AdzunaJobSource implements JobSource {
 
         String externalId = dto.getId() != null ? String.valueOf(dto.getId()).trim() : null;
         String title = dto.getTitle() != null ? dto.getTitle().trim() : null;
-        String company = (dto.getCompany() != null && dto.getCompany().getDisplayName() != null)
+        String company = (dto.getCompany() != null && dto.getCompany().getDisplayName() != null && !dto.getCompany().getDisplayName().isBlank())
                 ? dto.getCompany().getDisplayName().trim() : "Unknown";
 
-        String location = (dto.getLocation() != null && dto.getLocation().getDisplayName() != null)
-                ? dto.getLocation().getDisplayName().trim() : "India";
+        String location = (dto.getLocation() != null && dto.getLocation().getDisplayName() != null && !dto.getLocation().getDisplayName().isBlank())
+                ? dto.getLocation().getDisplayName().trim() : null; // Do NOT default to "India"
 
         String jobUrl = dto.getRedirectUrl() != null ? dto.getRedirectUrl().trim() : null;
         String description = dto.getDescription() != null ? dto.getDescription().trim() : "";
@@ -185,6 +203,11 @@ public class AdzunaJobSource implements JobSource {
         BigDecimal salaryMin = dto.getSalaryMin() != null ? BigDecimal.valueOf(dto.getSalaryMin()) : null;
         BigDecimal salaryMax = dto.getSalaryMax() != null ? BigDecimal.valueOf(dto.getSalaryMax()) : null;
         LocalDate postedDate = parseDate(dto.getCreated());
+
+        String rawContractType = dto.getContractType();
+        String rawContractTime = dto.getContractTime();
+        EmploymentType employmentType = parseEmploymentType(rawContractType, rawContractTime);
+        RemoteType remoteType = parseRemoteType(location, title, description);
 
         Map<String, Object> rawData = new LinkedHashMap<>();
         if (externalId != null) rawData.put("id", externalId);
@@ -202,11 +225,11 @@ public class AdzunaJobSource implements JobSource {
                 .description(description)
                 .jobUrl(jobUrl)
                 .source(SOURCE_NAME)
-                .employmentType(EmploymentType.FULL_TIME)
-                .remoteType(location.toLowerCase().contains("remote") ? RemoteType.REMOTE : RemoteType.HYBRID)
+                .employmentType(employmentType)
+                .remoteType(remoteType)
                 .salaryMin(salaryMin)
                 .salaryMax(salaryMax)
-                .currency("INR")
+                .currency(null) // Do NOT hardcode "INR"
                 .postedDate(postedDate)
                 .rawData(rawData)
                 .build();
@@ -225,6 +248,30 @@ public class AdzunaJobSource implements JobSource {
                 return LocalDate.now();
             }
         }
+    }
+
+    private EmploymentType parseEmploymentType(String contractType, String contractTime) {
+        String combined = ((contractType != null ? contractType : "") + " " + (contractTime != null ? contractTime : "")).toLowerCase().trim();
+        if (combined.isBlank()) {
+            return null;
+        }
+        if (combined.contains("part")) return EmploymentType.PART_TIME;
+        if (combined.contains("contract") || combined.contains("freelance")) return EmploymentType.CONTRACT;
+        if (combined.contains("temp")) return EmploymentType.TEMPORARY;
+        if (combined.contains("intern")) return EmploymentType.INTERNSHIP;
+        if (combined.contains("full") || combined.contains("permanent")) return EmploymentType.FULL_TIME;
+        return null;
+    }
+
+    private RemoteType parseRemoteType(String location, String title, String description) {
+        String combined = ((location != null ? location : "") + " " + (title != null ? title : "")).toLowerCase();
+        if (combined.isBlank()) {
+            return null;
+        }
+        if (combined.contains("remote")) return RemoteType.REMOTE;
+        if (combined.contains("hybrid")) return RemoteType.HYBRID;
+        if (combined.contains("onsite") || combined.contains("on-site") || combined.contains("office")) return RemoteType.ONSITE;
+        return null; // Do NOT guess HYBRID
     }
 
     @Data
@@ -252,6 +299,12 @@ public class AdzunaJobSource implements JobSource {
 
         @JsonProperty("salary_max")
         private Double salaryMax;
+
+        @JsonProperty("contract_type")
+        private String contractType;
+
+        @JsonProperty("contract_time")
+        private String contractTime;
 
         private String created;
     }

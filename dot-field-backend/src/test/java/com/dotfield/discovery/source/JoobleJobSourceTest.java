@@ -2,6 +2,8 @@ package com.dotfield.discovery.source;
 
 import com.dotfield.dto.JobDiscoveryRequest;
 import com.dotfield.dto.RawJobListing;
+import com.dotfield.entity.EmploymentType;
+import com.dotfield.entity.RemoteType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -53,6 +55,8 @@ class JoobleJobSourceTest {
                       "company": "Swiggy",
                       "location": "Remote - India",
                       "snippet": "React and Node developer",
+                      "type": "Full-time",
+                      "salary": "₹15,000 - ₹25,000",
                       "link": "https://jooble.org/desc/123456"
                     }
                   ]
@@ -79,6 +83,39 @@ class JoobleJobSourceTest {
         assertEquals("Swiggy", job.getCompany());
         assertEquals("Remote - India", job.getLocation());
         assertEquals("JOOBLE", job.getSource());
+        assertEquals(EmploymentType.FULL_TIME, job.getEmploymentType());
+        assertEquals(RemoteType.REMOTE, job.getRemoteType());
+        assertEquals("INR", job.getCurrency());
+    }
+
+    @Test
+    void discover_missingLocation_leavesLocationNull() {
+        String jsonResponse = """
+                {
+                  "totalCount": 1,
+                  "jobs": [
+                    {
+                      "id": "123457",
+                      "title": "Frontend Engineer",
+                      "company": "Zomato",
+                      "snippet": "Vue developer",
+                      "link": "https://jooble.org/desc/123457"
+                    }
+                  ]
+                }
+                """;
+
+        mockServer.expect(requestTo("https://jooble.org/api/test-jooble-key"))
+                .andRespond(withSuccess(jsonResponse, MediaType.APPLICATION_JSON));
+
+        JobDiscoveryRequest request = JobDiscoveryRequest.builder().source("JOOBLE").build();
+        List<RawJobListing> listings = source.discover(request);
+
+        assertNotNull(listings);
+        assertEquals(1, listings.size());
+        assertNull(listings.get(0).getLocation()); // Location must remain null, NOT "India"
+        assertNull(listings.get(0).getRemoteType()); // RemoteType must remain null, NOT HYBRID
+        assertNull(listings.get(0).getCurrency()); // Currency must remain null if absent
     }
 
     @Test

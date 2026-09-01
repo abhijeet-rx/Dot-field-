@@ -18,6 +18,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 
 import java.time.LocalDate;
@@ -81,42 +82,55 @@ public class JoobleJobSource implements JobSource {
             return List.of();
         }
 
-        String targetUrl = buildEndpointUrl();
-        JoobleApiRequest reqBody = buildRequestBody(request);
+        int max = (request != null && request.getMaxResults() != null) ? request.getMaxResults() : 50;
+        List<RawJobListing> rawJobs = new ArrayList<>();
+        int page = 1;
+
         log.info("Fetching job opportunities from Jooble API...");
 
-        try {
-            JoobleApiResponse response = restClient.post()
-                    .uri(targetUrl)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(reqBody)
-                    .retrieve()
-                    .body(JoobleApiResponse.class);
+        while (rawJobs.size() < max) {
+            String targetUrl = buildEndpointUrl();
+            JoobleApiRequest reqBody = buildRequestBody(request, page);
 
-            if (response == null || response.getJobs() == null || response.getJobs().isEmpty()) {
-                log.info("Jooble API returned zero jobs");
-                return List.of();
-            }
+            try {
+                JoobleApiResponse response = restClient.post()
+                        .uri(targetUrl)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .body(reqBody)
+                        .retrieve()
+                        .body(JoobleApiResponse.class);
 
-            int max = (request != null && request.getMaxResults() != null) ? request.getMaxResults() : 50;
-            List<RawJobListing> rawJobs = new ArrayList<>();
-
-            for (JoobleJobDto dto : response.getJobs()) {
-                if (rawJobs.size() >= max) {
+                if (response == null || response.getJobs() == null || response.getJobs().isEmpty()) {
                     break;
                 }
-                RawJobListing listing = mapToRawJob(dto);
-                if (listing != null) {
-                    rawJobs.add(listing);
-                }
-            }
 
-            log.info("Successfully fetched and mapped {} jobs from Jooble API", rawJobs.size());
-            return rawJobs;
-        } catch (Exception e) {
-            log.error("Failed to fetch jobs from Jooble API: {}", e.getMessage());
-            return List.of();
+                int fetchedThisPage = 0;
+                for (JoobleJobDto dto : response.getJobs()) {
+                    if (rawJobs.size() >= max) {
+                        break;
+                    }
+                    RawJobListing listing = mapToRawJob(dto);
+                    if (listing != null) {
+                        rawJobs.add(listing);
+                        fetchedThisPage++;
+                    }
+                }
+
+                if (fetchedThisPage == 0 || response.getJobs().size() < 20) {
+                    break;
+                }
+                page++;
+            } catch (HttpClientErrorException.TooManyRequests e) {
+                log.warn("Jooble API rate limited (429). Stopping pagination safely.");
+                break;
+            } catch (Exception e) {
+                log.error("Failed to fetch jobs from Jooble API: {}", e.getClass().getSimpleName() + " - " + e.getMessage());
+                break;
+            }
         }
+
+        log.info("Successfully fetched and mapped {} jobs from Jooble API", rawJobs.size());
+        return rawJobs;
     }
 
     private String buildEndpointUrl() {
@@ -127,7 +141,7 @@ public class JoobleJobSource implements JobSource {
         return base + apiKey.trim();
     }
 
-    private JoobleApiRequest buildRequestBody(JobDiscoveryRequest request) {
+    private JoobleApiRequest buildRequestBody(JobDiscoveryRequest request, int page) {
         String keywords = (request != null && request.getKeyword() != null && !request.getKeyword().isBlank())
                 ? request.getKeyword().trim() : "software engineer";
 
@@ -137,7 +151,7 @@ public class JoobleJobSource implements JobSource {
         return JoobleApiRequest.builder()
                 .keywords(keywords)
                 .location(location)
-                .page(1)
+                .page(page)
                 .build();
     }
 
@@ -149,7 +163,10 @@ public class JoobleJobSource implements JobSource {
         String externalId = dto.getId() != null ? String.valueOf(dto.getId()).trim() : null;
         String title = dto.getTitle() != null ? dto.getTitle().trim() : null;
         String company = (dto.getCompany() != null && !dto.getCompany().isBlank()) ? dto.getCompany().trim() : "Unknown";
-        String location = (dto.getLocation() != null && !dto.getLocation().isBlank()) ? dto.getLocation().trim() : "India";
+        
+        // Missing location must remain null, NOT defaulted to "India"
+        String location = (dto.getLocation() != null && !dto.getLocation().isBlank()) ? dto.getLocation().trim() : null;
+        
         String jobUrl = dto.getLink() != null ? dto.getLink().trim() : null;
         String description = dto.getSnippet() != null ? dto.getSnippet().trim() : "";
 
@@ -163,6 +180,8 @@ public class JoobleJobSource implements JobSource {
 
         LocalDate postedDate = parseDate(dto.getUpdated());
         EmploymentType employmentType = parseEmploymentType(dto.getType());
+        RemoteType remoteType = parseRemoteType(location, title, description);
+        String currency = parseCurrency(dto.getSalary());
 
         Map<String, Object> rawData = new LinkedHashMap<>();
         if (externalId != null) rawData.put("id", externalId);
@@ -180,7 +199,8 @@ public class JoobleJobSource implements JobSource {
                 .jobUrl(jobUrl)
                 .source(SOURCE_NAME)
                 .employmentType(employmentType)
-                .remoteType(location.toLowerCase().contains("remote") ? RemoteType.REMOTE : RemoteType.HYBRID)
+                .remoteType(remoteType)
+                .currency(currency)
                 .postedDate(postedDate)
                 .rawData(rawData)
                 .build();
@@ -203,13 +223,45 @@ public class JoobleJobSource implements JobSource {
 
     private EmploymentType parseEmploymentType(String typeStr) {
         if (typeStr == null || typeStr.isBlank()) {
-            return EmploymentType.FULL_TIME;
+            return null; // Do NOT default missing type to FULL_TIME
         }
-        String lower = typeStr.toLowerCase();
+        String lower = typeStr.toLowerCase().trim();
         if (lower.contains("part")) return EmploymentType.PART_TIME;
         if (lower.contains("contract") || lower.contains("freelance")) return EmploymentType.CONTRACT;
+        if (lower.contains("temp")) return EmploymentType.TEMPORARY;
         if (lower.contains("intern")) return EmploymentType.INTERNSHIP;
-        return EmploymentType.FULL_TIME;
+        if (lower.contains("full") || lower.contains("perm")) return EmploymentType.FULL_TIME;
+        return null;
+    }
+
+    private RemoteType parseRemoteType(String location, String title, String description) {
+        String combined = ((location != null ? location : "") + " " + (title != null ? title : "")).toLowerCase();
+        if (combined.isBlank()) {
+            return null;
+        }
+        if (combined.contains("remote")) return RemoteType.REMOTE;
+        if (combined.contains("hybrid")) return RemoteType.HYBRID;
+        if (combined.contains("onsite") || combined.contains("on-site") || combined.contains("office")) return RemoteType.ONSITE;
+        return null; // Do NOT guess HYBRID
+    }
+
+    private String parseCurrency(String salaryStr) {
+        if (salaryStr == null || salaryStr.isBlank()) {
+            return null;
+        }
+        if (salaryStr.contains("₹") || salaryStr.toUpperCase().contains("INR")) {
+            return "INR";
+        }
+        if (salaryStr.contains("$") || salaryStr.toUpperCase().contains("USD")) {
+            return "USD";
+        }
+        if (salaryStr.contains("€") || salaryStr.toUpperCase().contains("EUR")) {
+            return "EUR";
+        }
+        if (salaryStr.contains("£") || salaryStr.toUpperCase().contains("GBP")) {
+            return "GBP";
+        }
+        return null;
     }
 
     @Data
