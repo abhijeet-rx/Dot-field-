@@ -70,7 +70,7 @@ class JobIngestionTriggerControllerTest {
                 .externalId("INGEST-1")
                 .title("DevOps Engineer")
                 .company("CloudInc")
-                .location("Remote")
+                .location("Remote - India")
                 .jobUrl("https://remotive.com/jobs/ingest-1")
                 .build();
         when(mockJobSource.discover(any())).thenReturn(List.of(listing));

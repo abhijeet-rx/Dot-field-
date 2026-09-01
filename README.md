@@ -43,8 +43,37 @@ The application requires environment variables in production and development. Co
 | `INITIAL_ADMIN_EMAIL` | Email designated for ADMIN role upon registration | `admin@example.com` |
 | `CORS_ALLOWED_ORIGINS` | Allowed origins for CORS | `http://localhost:5173,http://localhost:5174` |
 | `SPRING_PROFILES_ACTIVE` | Active Spring profile (`dev` or `prod`) | `default` |
+| `COMPANY_CAREERS_ENABLED` | Enables Indian company career sources & public ATS feeds | `true` *(Active default)* |
+| `REMOTIVE_ENABLED` | Enables Remotive secondary source (demoted) | `false` *(Disabled default)* |
+| `NAUKRI_ENABLED` | Enables Naukri Enterprise Partner API | `false` *(Requires Partner API keys)* |
+| `NAUKRI_CLIENT_ID` / `SECRET` | Naukri OAuth 2.0 Partner credentials | *(Required if NAUKRI_ENABLED=true)* |
+| `FOUNDIT_ENABLED` | Enables Foundit (Monster India) Partner API | `false` *(Requires Partner API keys)* |
+| `FOUNDIT_CLIENT_ID` / `SECRET` | Foundit OAuth 2.0 Partner credentials | *(Required if FOUNDIT_ENABLED=true)* |
+| `INDEED_ENABLED` | Enables Indeed India Publisher/Partner API | `false` *(Requires Publisher ID)* |
+| `INDEED_PUBLISHER_ID` | Indeed India Publisher ID | *(Required if INDEED_ENABLED=true)* |
 
 ---
+
+## 🇮🇳 Phase 13 — India-First Job Discovery Platform
+
+DOT Field prioritizes legitimate Indian job opportunities and explicit India-remote roles across popular India-relevant sources while strictly adhering to terms of service and avoiding unauthorized HTML scraping.
+
+### Source Availability Matrix
+
+| Source Adapter | Status Category | Access Method | Credentials Required |
+| -------------- | --------------- | ------------- | -------------------- |
+| **Company Career Pages** | `WORKING` | Public ATS & Structured Indian Employer Feeds (Razorpay, Swiggy, Flipkart, TCS, Infosys, Wipro) | None |
+| **Naukri.com** | `DISABLED — PARTNER ACCESS REQUIRED` | Enterprise OAuth 2.0 / Recruiter API | `NAUKRI_CLIENT_ID`, `NAUKRI_CLIENT_SECRET` |
+| **Foundit (Monster India)** | `DISABLED — PARTNER ACCESS REQUIRED` | Partner API | `FOUNDIT_CLIENT_ID`, `FOUNDIT_CLIENT_SECRET` |
+| **Indeed India** | `DISABLED — PARTNER ACCESS REQUIRED` | Publisher / Partner API (`co=in`) | `INDEED_PUBLISHER_ID` |
+| **Remotive** | `DISABLED` *(Demoted)* | Public API (Secondary source, filtered via `IndiaJobFilter`) | None |
+
+### Location Normalization & India Job Filter
+
+Every job listing passes through `IndiaJobFilter` and `IndiaLocationNormalizer` before extraction and persistence:
+- **Indian Tech Hubs & Cities**: Bengaluru, Hyderabad, Chennai, Pune, Mumbai, Delhi NCR, Gurugram, Noida, Kolkata, Ahmedabad, Jaipur, Kochi, Chandigarh, Indore, etc. -> Classified as `isIndiaRelevant = true`, `normalizedCountry = "IN"`.
+- **Explicit India Remote**: `"Remote - India"`, `"India - Remote"`, `"Remote (India)"`, `"Anywhere in India"` -> `isIndiaRelevant = true`, `isRemote = true`, `remoteCountry = "IN"`.
+- **Ambiguous Remote / Foreign Locations**: Generic `"Remote"` without explicit country eligibility or foreign locations (`"San Francisco, USA"`, `"London, UK"`) are rejected (`isIndiaRelevant = false`) to prevent false positives.
 
 ## Active Profiles & Logging
 

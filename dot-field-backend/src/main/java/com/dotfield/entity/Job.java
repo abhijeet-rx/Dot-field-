@@ -40,6 +40,18 @@ public class Job {
     @Column(length = 200)
     private String location;
 
+    @Column(length = 10)
+    private String normalizedCountry;
+
+    @Column(length = 100)
+    private String normalizedCity;
+
+    @Column(length = 10)
+    private String remoteCountry;
+
+    @Column(nullable = false)
+    private Boolean isIndiaRelevant;
+
     @Column(columnDefinition = "TEXT")
     private String description;
 
@@ -121,6 +133,9 @@ public class Job {
         }
         if (this.status == null) {
             this.status = JobStatus.ACTIVE;
+        }
+        if (this.isIndiaRelevant == null) {
+            this.isIndiaRelevant = false;
         }
         if (this.source == null || this.source.trim().isEmpty()) {
             this.source = "MANUAL";

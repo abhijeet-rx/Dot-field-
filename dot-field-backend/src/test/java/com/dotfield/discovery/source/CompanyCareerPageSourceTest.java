@@ -92,7 +92,7 @@ class CompanyCareerPageSourceTest {
     void discover_withCompanyFilter_filtersCorrectly() {
         JobDiscoveryRequest request = JobDiscoveryRequest.builder()
                 .source("COMPANY_WEBSITE")
-                .company("Acme")
+                .company("Razorpay")
                 .maxResults(10)
                 .build();
 
@@ -100,7 +100,7 @@ class CompanyCareerPageSourceTest {
 
         assertFalse(listings.isEmpty());
         for (RawJobListing job : listings) {
-            assertTrue(job.getCompany().toLowerCase().contains("acme"));
+            assertTrue(job.getCompany().toLowerCase().contains("razorpay"));
         }
     }
 

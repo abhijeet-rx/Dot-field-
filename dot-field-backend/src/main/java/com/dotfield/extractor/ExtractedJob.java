@@ -19,6 +19,10 @@ public class ExtractedJob {
     private String title;
     private String company;
     private String location;
+    private String normalizedCountry;
+    private String normalizedCity;
+    private String remoteCountry;
+    private Boolean isIndiaRelevant;
     private String description;
     private String jobUrl;
     private String source;

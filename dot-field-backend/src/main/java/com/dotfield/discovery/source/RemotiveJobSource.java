@@ -25,7 +25,7 @@ import java.util.*;
  */
 @Slf4j
 @Component
-@ConditionalOnProperty(name = "job.sources.remotive.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(name = "job.sources.remotive.enabled", havingValue = "true", matchIfMissing = false)
 public class RemotiveJobSource implements JobSource {
 
     public static final String SOURCE_NAME = "REMOTIVE";

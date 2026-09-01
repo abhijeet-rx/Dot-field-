@@ -86,7 +86,7 @@ class JobFreshnessLifecycleTest {
                 .externalId("REM-101")
                 .title("Senior Java Architect")
                 .company("CloudCorp")
-                .location("Remote")
+                .location("Remote - India")
                 .jobUrl("https://remotive.com/jobs/101")
                 .postedDate(postedDate)
                 .build();
@@ -116,13 +116,13 @@ class JobFreshnessLifecycleTest {
         LocalDateTime originalFirstSeen = LocalDateTime.now().minusDays(5).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
         LocalDateTime originalLastSeen = LocalDateTime.now().minusDays(2).truncatedTo(java.time.temporal.ChronoUnit.MICROS);
 
-        String fingerprint = deduplicationService.generateFingerprint("CloudCorp", "Backend Engineer", "Remote", "Build scalable distributed backend services");
+        String fingerprint = deduplicationService.generateFingerprint("CloudCorp", "Backend Engineer", "Remote - India", "Build scalable distributed backend services");
 
         Job existingJob = Job.builder()
                 .externalId("REM-102")
                 .title("Backend Engineer")
                 .company("CloudCorp")
-                .location("Remote")
+                .location("Remote - India")
                 .description("Build scalable distributed backend services")
                 .jobUrl("https://remotive.com/jobs/102")
                 .canonicalUrl("https://remotive.com/jobs/102")
@@ -130,6 +130,8 @@ class JobFreshnessLifecycleTest {
                 .source("REMOTIVE")
                 .employmentType(com.dotfield.entity.EmploymentType.FULL_TIME)
                 .remoteType(com.dotfield.entity.RemoteType.REMOTE)
+                .remoteCountry("IN")
+                .isIndiaRelevant(true)
                 .status(JobStatus.ACTIVE)
                 .firstSeenAt(originalFirstSeen)
                 .lastSeenAt(originalLastSeen)
@@ -141,7 +143,7 @@ class JobFreshnessLifecycleTest {
                 .externalId("REM-102")
                 .title("Backend Engineer")
                 .company("CloudCorp")
-                .location("Remote")
+                .location("Remote - India")
                 .description("Build scalable distributed backend services")
                 .jobUrl("https://remotive.com/jobs/102")
                 .employmentType(com.dotfield.entity.EmploymentType.FULL_TIME)

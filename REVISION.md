@@ -106,6 +106,7 @@ src/main/resources/db/migration/
    - Unique Index: `uk_jobs_source_external_id` (`source`, `external_id`)
    - Unique Index: `uk_jobs_canonical_url` (`canonical_url`)
    - Index: `idx_jobs_fingerprint` (`deduplication_fingerprint`)
+   - Migration V7 additions: `normalized_country`, `normalized_city`, `remote_country`, `is_india_relevant`, indexes `idx_jobs_india_relevant` and `idx_jobs_source`.
 
 ---
 

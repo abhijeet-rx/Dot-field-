@@ -37,7 +37,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class JobDiscoveryService implements JobIngestionOrchestrator {
 
     private final JobSourceRegistry sourceRegistry;
@@ -46,6 +45,39 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
     private final JobDiscoveryPersistenceHelper persistenceHelper;
     private final JobRepository jobRepository;
     private final JobIngestionMonitor ingestionMonitor;
+    private final com.dotfield.discovery.india.IndiaJobFilter indiaJobFilter;
+    private final com.dotfield.discovery.india.IndiaLocationNormalizer locationNormalizer;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public JobDiscoveryService(
+            JobSourceRegistry sourceRegistry,
+            JobExtractionPipeline extractionPipeline,
+            JobDeduplicationService deduplicationService,
+            JobDiscoveryPersistenceHelper persistenceHelper,
+            JobRepository jobRepository,
+            JobIngestionMonitor ingestionMonitor,
+            com.dotfield.discovery.india.IndiaJobFilter indiaJobFilter,
+            com.dotfield.discovery.india.IndiaLocationNormalizer locationNormalizer) {
+        this.sourceRegistry = sourceRegistry;
+        this.extractionPipeline = extractionPipeline;
+        this.deduplicationService = deduplicationService;
+        this.persistenceHelper = persistenceHelper;
+        this.jobRepository = jobRepository;
+        this.ingestionMonitor = ingestionMonitor;
+        var norm = locationNormalizer != null ? locationNormalizer : new com.dotfield.discovery.india.IndiaLocationNormalizer();
+        this.locationNormalizer = norm;
+        this.indiaJobFilter = indiaJobFilter != null ? indiaJobFilter : new com.dotfield.discovery.india.IndiaJobFilter(norm);
+    }
+
+    public JobDiscoveryService(
+            JobSourceRegistry sourceRegistry,
+            JobExtractionPipeline extractionPipeline,
+            JobDeduplicationService deduplicationService,
+            JobDiscoveryPersistenceHelper persistenceHelper,
+            JobRepository jobRepository,
+            JobIngestionMonitor ingestionMonitor) {
+        this(sourceRegistry, extractionPipeline, deduplicationService, persistenceHelper, jobRepository, ingestionMonitor, null, null);
+    }
 
     private final AtomicBoolean ingestionRunning = new AtomicBoolean(false);
 
@@ -202,6 +234,12 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
 
         for (RawJobListing rawListing : rawListings) {
             try {
+                if (!indiaJobFilter.isIndiaRelevant(rawListing)) {
+                    log.debug("Skipping non-India relevant listing (title='{}', location='{}') from source: {}",
+                            rawListing.getTitle(), rawListing.getLocation(), source.getSourceName());
+                    continue;
+                }
+
                 if (rawListing.getExternalId() != null && !rawListing.getExternalId().isBlank()) {
                     if (!seenExternalIds.add(rawListing.getExternalId().trim())) {
                         log.debug("Within-batch duplicate detected for externalId: {}", rawListing.getExternalId());
@@ -280,6 +318,12 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
         String sourceName = rawListing.getSource() != null ? rawListing.getSource() : defaultSource;
         ExtractedJob extractedJob = extractionPipeline.extractAndNormalize(rawData, sourceName);
 
+        var normalizedLoc = locationNormalizer.normalize(extractedJob.getLocation() != null ? extractedJob.getLocation() : rawListing.getLocation());
+        extractedJob.setNormalizedCountry(normalizedLoc.getNormalizedCountry());
+        extractedJob.setNormalizedCity(normalizedLoc.getNormalizedCity());
+        extractedJob.setRemoteCountry(normalizedLoc.getRemoteCountry());
+        extractedJob.setIsIndiaRelevant(normalizedLoc.isIndiaRelevant());
+
         String canonicalUrl = deduplicationService.canonicalizeUrl(extractedJob.getJobUrl());
         String fingerprint = deduplicationService.generateFingerprint(
                 extractedJob.getCompany(),
@@ -320,6 +364,10 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
                 .title(extractedJob.getTitle())
                 .company(extractedJob.getCompany())
                 .location(extractedJob.getLocation())
+                .normalizedCountry(extractedJob.getNormalizedCountry())
+                .normalizedCity(extractedJob.getNormalizedCity())
+                .remoteCountry(extractedJob.getRemoteCountry())
+                .isIndiaRelevant(extractedJob.getIsIndiaRelevant())
                 .description(extractedJob.getDescription())
                 .jobUrl(extractedJob.getJobUrl())
                 .canonicalUrl(canonicalUrl)
@@ -390,6 +438,38 @@ public class JobDiscoveryService implements JobIngestionOrchestrator {
         if (extracted.getLocation() != null && !extracted.getLocation().isBlank() && !Objects.equals(job.getLocation(), extracted.getLocation())) {
             job.setLocation(extracted.getLocation());
             changed = true;
+        }
+        if (extracted.getNormalizedCountry() != null) {
+            if (job.getNormalizedCountry() != null && !Objects.equals(job.getNormalizedCountry(), extracted.getNormalizedCountry())) {
+                job.setNormalizedCountry(extracted.getNormalizedCountry());
+                changed = true;
+            } else if (job.getNormalizedCountry() == null) {
+                job.setNormalizedCountry(extracted.getNormalizedCountry());
+            }
+        }
+        if (extracted.getNormalizedCity() != null) {
+            if (job.getNormalizedCity() != null && !Objects.equals(job.getNormalizedCity(), extracted.getNormalizedCity())) {
+                job.setNormalizedCity(extracted.getNormalizedCity());
+                changed = true;
+            } else if (job.getNormalizedCity() == null) {
+                job.setNormalizedCity(extracted.getNormalizedCity());
+            }
+        }
+        if (extracted.getRemoteCountry() != null) {
+            if (job.getRemoteCountry() != null && !Objects.equals(job.getRemoteCountry(), extracted.getRemoteCountry())) {
+                job.setRemoteCountry(extracted.getRemoteCountry());
+                changed = true;
+            } else if (job.getRemoteCountry() == null) {
+                job.setRemoteCountry(extracted.getRemoteCountry());
+            }
+        }
+        if (extracted.getIsIndiaRelevant() != null) {
+            if (job.getIsIndiaRelevant() != null && !Objects.equals(job.getIsIndiaRelevant(), extracted.getIsIndiaRelevant())) {
+                job.setIsIndiaRelevant(extracted.getIsIndiaRelevant());
+                changed = true;
+            } else if (job.getIsIndiaRelevant() == null) {
+                job.setIsIndiaRelevant(extracted.getIsIndiaRelevant());
+            }
         }
         if (extracted.getDescription() != null && !extracted.getDescription().isBlank() && !Objects.equals(job.getDescription(), extracted.getDescription())) {
             job.setDescription(extracted.getDescription());

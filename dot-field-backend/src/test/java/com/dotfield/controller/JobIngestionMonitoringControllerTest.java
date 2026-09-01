@@ -61,7 +61,7 @@ class JobIngestionMonitoringControllerTest {
                 .externalId("MON-1")
                 .title("Site Reliability Engineer")
                 .company("CloudOps")
-                .location("Remote")
+                .location("Remote - India")
                 .jobUrl("https://remotive.com/jobs/mon-1")
                 .build();
         when(mockJobSource.discover(any())).thenReturn(List.of(listing));

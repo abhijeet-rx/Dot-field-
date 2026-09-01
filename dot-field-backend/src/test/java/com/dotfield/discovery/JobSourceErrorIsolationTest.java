@@ -66,7 +66,7 @@ class JobSourceErrorIsolationTest {
                                 .externalId("SRC-B-101")
                                 .title("Python Engineer")
                                 .company("Tech Corp")
-                                .location("Remote")
+                                .location("Remote - India")
                                 .source("SOURCE_B_SUCCESSFUL")
                                 .build()
                 );

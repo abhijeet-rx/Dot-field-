@@ -202,10 +202,12 @@ export default function JobIntelligence() {
             )}
             <div className="job-header-card__meta">
               {job.location && <span className="meta-tag"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>{job.location}</span>}
+              {job.normalizedCity && <span className="meta-tag">🏙 {job.normalizedCity}</span>}
+              {job.isIndiaRelevant && <span className="meta-tag meta-tag--accent">🇮🇳 India Relevant</span>}
               {job.remoteType && <span className="meta-tag meta-tag--accent">{remoteLabels[job.remoteType] || job.remoteType}</span>}
               {job.employmentType && <span className="meta-tag">{employmentLabels[job.employmentType] || job.employmentType}</span>}
               {salary && <span className="meta-tag meta-tag--salary">{salary}</span>}
-              {job.source && <span className="meta-tag meta-tag--source">{job.source}</span>}
+              {job.source && <span className="meta-tag meta-tag--source">Source: {job.source}</span>}
             </div>
             {job.postedDate && <p className="job-header-card__date">Posted {formatDate(job.postedDate)}</p>}
             {job.description && (
