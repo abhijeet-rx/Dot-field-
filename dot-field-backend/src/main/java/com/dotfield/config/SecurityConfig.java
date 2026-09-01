@@ -37,7 +37,22 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final com.dotfield.security.DiscoveryRateLimitFilter discoveryRateLimitFilter;
     private final ObjectMapper objectMapper;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public SecurityConfig(
+            JwtAuthenticationFilter jwtAuthenticationFilter,
+            com.dotfield.security.DiscoveryRateLimitFilter discoveryRateLimitFilter,
+            ObjectMapper objectMapper) {
+        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.discoveryRateLimitFilter = discoveryRateLimitFilter;
+        this.objectMapper = objectMapper;
+    }
+
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, ObjectMapper objectMapper) {
+        this(jwtAuthenticationFilter, null, objectMapper);
+    }
 
     @Value("${cors.allowed-origins:}")
     private String allowedOrigins;
@@ -78,6 +93,7 @@ public class SecurityConfig {
                         .requestMatchers("/auth/me", "/profile/**", "/applications/**").authenticated()
                         .anyRequest().authenticated()
                 )
+                .addFilterBefore(discoveryRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

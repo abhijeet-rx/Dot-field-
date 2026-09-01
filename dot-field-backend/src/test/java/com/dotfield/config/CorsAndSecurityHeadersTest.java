@@ -51,7 +51,7 @@ class CorsAndSecurityHeadersTest {
     @Test
     @DisplayName("Production CORS without CORS_ALLOWED_ORIGINS property does NOT silently allow localhost")
     void productionWithoutConfigDoesNotAllowLocalhost() {
-        SecurityConfig config = new SecurityConfig(null, null);
+        SecurityConfig config = new SecurityConfig(null, null, null);
         org.springframework.test.util.ReflectionTestUtils.setField(config, "allowedOrigins", "");
         org.springframework.web.cors.CorsConfigurationSource source = config.corsConfigurationSource();
         assertThat(source).isNotNull();
@@ -60,7 +60,7 @@ class CorsAndSecurityHeadersTest {
     @Test
     @DisplayName("Wildcard '*' CORS origin is strictly prohibited when allowCredentials is true")
     void wildcardCorsOriginIsProhibited() {
-        SecurityConfig config = new SecurityConfig(null, null);
+        SecurityConfig config = new SecurityConfig(null, null, null);
         org.springframework.test.util.ReflectionTestUtils.setField(config, "allowedOrigins", "*");
         assertThrows(IllegalArgumentException.class, config::corsConfigurationSource);
     }

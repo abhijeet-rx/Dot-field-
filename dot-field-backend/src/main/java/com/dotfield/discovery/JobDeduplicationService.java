@@ -27,6 +27,10 @@ public class JobDeduplicationService {
 
     private final JobRepository jobRepository;
 
+    @lombok.Setter
+    @org.springframework.beans.factory.annotation.Value("${job.discovery.canonicalize-scheme:true}")
+    private boolean canonicalizeScheme = true;
+
     public Optional<Job> findExistingJob(String source, String externalId, String rawUrl,
                                          String company, String title, String location, String description) {
         // Level 1 — Source + External ID
@@ -79,8 +83,12 @@ public class JobDeduplicationService {
             }
 
             int port = uri.getPort();
-            if (( "http".equals(scheme) && port == 80) || ("https".equals(scheme) && port == 443)) {
+            if (("http".equals(scheme) && port == 80) || ("https".equals(scheme) && port == 443)) {
                 port = -1;
+            }
+
+            if (canonicalizeScheme && ("http".equals(scheme) || "https".equals(scheme))) {
+                scheme = "https";
             }
 
             String path = uri.getPath();

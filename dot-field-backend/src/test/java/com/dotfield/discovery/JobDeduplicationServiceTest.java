@@ -39,7 +39,18 @@ class JobDeduplicationServiceTest {
     }
 
     @Test
-    void canonicalizeUrl_httpAndHttpsRemainDistinct() {
+    void canonicalizeUrl_httpAndHttpsNormalizedToHttpsWhenCanonicalizeSchemeIsTrue() {
+        deduplicationService.setCanonicalizeScheme(true);
+        String httpUrl = deduplicationService.canonicalizeUrl("http://example.com/job/101");
+        String httpsUrl = deduplicationService.canonicalizeUrl("https://example.com/job/101");
+
+        assertEquals(httpUrl, httpsUrl);
+        assertEquals("https://example.com/job/101", httpUrl);
+    }
+
+    @Test
+    void canonicalizeUrl_httpAndHttpsRemainDistinctWhenCanonicalizeSchemeIsFalse() {
+        deduplicationService.setCanonicalizeScheme(false);
         String httpUrl = deduplicationService.canonicalizeUrl("http://example.com/job/101");
         String httpsUrl = deduplicationService.canonicalizeUrl("https://example.com/job/101");
 
@@ -50,6 +61,7 @@ class JobDeduplicationServiceTest {
 
     @Test
     void canonicalizeUrl_removesDefaultPort80ForHttp() {
+        deduplicationService.setCanonicalizeScheme(false);
         String canonical = deduplicationService.canonicalizeUrl("http://example.com:80/job/101");
         assertEquals("http://example.com/job/101", canonical);
     }
