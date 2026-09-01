@@ -1,10 +1,8 @@
 # DOT Field — Job Intelligence Platform
 
-[![Live Demo](https://img.shields.io/badge/Live_Demo-Vercel-brightgreen?style=for-the-badge&logo=vercel)](https://dot-field.vercel.app)
-[![Watch Demo](https://img.shields.io/badge/Watch_Demo-YouTube-red?style=for-the-badge&logo=youtube)](https://youtu.be/example-demo)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-Repository-blue?style=for-the-badge&logo=github)](https://github.com/abhijeet-rx/Dot-field-)
 
-**Live Application**: [https://dot-field.vercel.app](https://dot-field.vercel.app)  
+
 **GitHub Repository**: [https://github.com/abhijeet-rx/Dot-field-](https://github.com/abhijeet-rx/Dot-field-)
 
 **DOT Field** is an automated, production-grade **India-first multi-source job discovery, requirement analysis, candidate fit matching, and AI resume tailoring platform**.
