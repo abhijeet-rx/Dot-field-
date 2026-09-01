@@ -36,15 +36,23 @@ The application combines a high-throughput **multi-source ingestion pipeline** (
 ## Application Screenshots
 
 ### 1. Job Intelligence Dashboard & Ingestion Hub
+Ingests real-time job opportunities across verified Indian tech hubs with deterministic location normalization and SHA-256 fingerprint deduplication.
+
 ![Job Intelligence Dashboard](public/screenshots/dashboard.png)
 
 ### 2. Candidate Job Fit & Requirements Analyzer
-![Job Fit Analyzer](public/screenshots/job_match.png)
+Evaluates candidate compatibility across 4 weighted dimensions: Skill Overlap (40%), Experience Relevance (30%), Title & Domain Fit (20%), and Location (10%).
 
-### 3. Tailored Resume Generator
+![Candidate Job Fit & Requirements Analyzer](public/screenshots/job_match.png)
+
+### 3. ATS Tailored Resume Generator
+Generates customized, job-specific ATS resumes in Markdown format based strictly on verified candidate profile data.
+
 ![Tailored Resume Generator](public/screenshots/resume_tailor.png)
 
 ### 4. Application Tracker & Analytics
+Interactive Kanban and Table boards tracking job application progress (`SAVED`, `APPLIED`, `INTERVIEW`, `OFFER`) with live funnel conversion metrics.
+
 ![Application Tracker](public/screenshots/applications.png)
 
 ---

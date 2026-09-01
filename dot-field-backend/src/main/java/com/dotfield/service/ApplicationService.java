@@ -79,7 +79,16 @@ public class ApplicationService {
         Profile profile = findProfileByUserId(userId);
         String searchQuery = (search != null && !search.isBlank()) ? search.trim() : null;
 
-        Page<Application> page = applicationRepository.searchApplications(profile.getId(), status, searchQuery, pageable);
+        Page<Application> page;
+        if (searchQuery == null) {
+            if (status == null) {
+                page = applicationRepository.findAllByProfileId(profile.getId(), pageable);
+            } else {
+                page = applicationRepository.findAllByProfileIdAndStatus(profile.getId(), status, pageable);
+            }
+        } else {
+            page = applicationRepository.searchApplications(profile.getId(), status, searchQuery, pageable);
+        }
         Page<ApplicationResponse> dtoPage = page.map(this::mapToResponse);
         return PagedResponse.fromPage(dtoPage);
     }
