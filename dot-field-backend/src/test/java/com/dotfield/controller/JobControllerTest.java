@@ -223,6 +223,28 @@ class JobControllerTest {
     }
 
     @Test
+    void getAllJobs_invalidPagination_returnsBadRequest() throws Exception {
+        // page < 0
+        mockMvc.perform(get("/jobs?page=-1&size=20"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Page index must be >= 0")));
+
+        // size < 1
+        mockMvc.perform(get("/jobs?page=0&size=0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Page size must be between 1 and 100")));
+
+        // size > 100
+        mockMvc.perform(get("/jobs?page=0&size=101"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("Page size must be between 1 and 100")));
+
+        // Valid size=100
+        mockMvc.perform(get("/jobs?page=0&size=100"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void updateJob_success() throws Exception {
         CreateJobRequest createRequest = CreateJobRequest.builder()
                 .title("DevOps Engineer")

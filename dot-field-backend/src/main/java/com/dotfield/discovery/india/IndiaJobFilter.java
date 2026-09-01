@@ -10,7 +10,9 @@ import org.springframework.stereotype.Component;
  * Centralized filter for evaluating whether a job listing is India-relevant.
  * Evaluated both BEFORE expensive extraction (on RawJobListing) and AFTER extraction (on ExtractedJob).
  * <p>
- * Ensures explicit foreign location (e.g. "London, UK") takes precedence over title location or source flags.
+ * Central India filter is the final authority. Reliable explicit evidence (Indian cities, explicit India-remote)
+ * is required for a job to be India-relevant. Foreign location evidence, generic unanchored remote ("Remote", "Worldwide"),
+ * currency (INR), or company identity alone are NOT sufficient and MUST NOT be accepted.
  */
 @Slf4j
 @Component
@@ -31,35 +33,39 @@ public class IndiaJobFilter {
         if (rawJob.getLocation() != null && !rawJob.getLocation().isBlank()) {
             NormalizedLocation locationInfo = locationNormalizer.normalize(rawJob.getLocation());
 
-            // If explicit location normalizes to foreign (e.g., "London, UK"), it MUST be rejected regardless of title or flags
-            if (!locationInfo.isIndiaRelevant() && locationInfo.getNormalizedCountry() != null && !"IN".equalsIgnoreCase(locationInfo.getNormalizedCountry())) {
-                return false;
-            }
-
             if (locationInfo.isIndiaRelevant()) {
                 return true;
             }
+
+            // Explicit foreign location (e.g. "London, UK", "New York, USA") or generic unanchored remote ("Remote", "Worldwide") MUST be rejected
+            if (locationInfo.getNormalizedCountry() != null && !"IN".equalsIgnoreCase(locationInfo.getNormalizedCountry())) {
+                return false;
+            }
+            if (locationInfo.isRemote()) {
+                return false;
+            }
         }
 
-        // 2. Explicit pre-classification flag set by a trusted source adapter (only if location is not foreign)
-        if (Boolean.TRUE.equals(rawJob.getIsIndiaRelevant())) {
-            return true;
-        }
-        if (Boolean.FALSE.equals(rawJob.getIsIndiaRelevant())) {
-            return false;
-        }
-
-        // 3. Secondary evidence: Check job title for explicit Indian city tags (only if location is missing/ambiguous)
+        // 2. Check title secondary evidence for explicit Indian city tags (only if location is missing/ambiguous)
         if (rawJob.getTitle() != null && !rawJob.getTitle().isBlank()) {
             NormalizedLocation titleLocation = locationNormalizer.normalize(rawJob.getTitle());
-
-            // Title location must NOT override explicit foreign location in title either (e.g., "Developer in London")
             if (titleLocation.isIndiaRelevant()) {
                 return true;
             }
         }
 
-        // 4. Currency alone (INR / ₹) or company identity is NOT sufficient evidence
+        // 3. Trusted source flag check (only valid if location was missing and title contains no foreign tags)
+        if (Boolean.TRUE.equals(rawJob.getIsIndiaRelevant())) {
+            // Re-verify title to ensure no explicit foreign location (e.g. "Developer in London")
+            if (rawJob.getTitle() != null && !rawJob.getTitle().isBlank()) {
+                NormalizedLocation titleLoc = locationNormalizer.normalize(rawJob.getTitle());
+                if (titleLoc.getNormalizedCountry() != null && !"IN".equalsIgnoreCase(titleLoc.getNormalizedCountry())) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         return false;
     }
 
@@ -75,13 +81,15 @@ public class IndiaJobFilter {
         if (extractedJob.getLocation() != null && !extractedJob.getLocation().isBlank()) {
             NormalizedLocation locationInfo = locationNormalizer.normalize(extractedJob.getLocation());
 
-            // Explicit foreign location post-extraction rejects listing regardless of flags or title
-            if (!locationInfo.isIndiaRelevant() && locationInfo.getNormalizedCountry() != null && !"IN".equalsIgnoreCase(locationInfo.getNormalizedCountry())) {
-                return false;
-            }
-
             if (locationInfo.isIndiaRelevant()) {
                 return true;
+            }
+
+            if (locationInfo.getNormalizedCountry() != null && !"IN".equalsIgnoreCase(locationInfo.getNormalizedCountry())) {
+                return false;
+            }
+            if (locationInfo.isRemote()) {
+                return false;
             }
         }
 
@@ -93,10 +101,16 @@ public class IndiaJobFilter {
             }
         }
 
-        if (Boolean.FALSE.equals(extractedJob.getIsIndiaRelevant())) {
-            return false;
+        if (Boolean.TRUE.equals(extractedJob.getIsIndiaRelevant())) {
+            if (extractedJob.getTitle() != null && !extractedJob.getTitle().isBlank()) {
+                NormalizedLocation titleLoc = locationNormalizer.normalize(extractedJob.getTitle());
+                if (titleLoc.getNormalizedCountry() != null && !"IN".equalsIgnoreCase(titleLoc.getNormalizedCountry())) {
+                    return false;
+                }
+            }
+            return true;
         }
 
-        return Boolean.TRUE.equals(extractedJob.getIsIndiaRelevant());
+        return false;
     }
 }

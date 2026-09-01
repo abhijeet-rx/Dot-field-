@@ -1,10 +1,11 @@
 package com.dotfield.config;
 
 import com.dotfield.exception.ApiError;
+import com.dotfield.security.DiscoveryRateLimitFilter;
 import com.dotfield.security.JwtAuthenticationFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -30,30 +31,18 @@ import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 
+@Slf4j
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
-    private final com.dotfield.security.DiscoveryRateLimitFilter discoveryRateLimitFilter;
+    private final DiscoveryRateLimitFilter discoveryRateLimitFilter;
     private final ObjectMapper objectMapper;
 
-    @org.springframework.beans.factory.annotation.Autowired
-    public SecurityConfig(
-            JwtAuthenticationFilter jwtAuthenticationFilter,
-            com.dotfield.security.DiscoveryRateLimitFilter discoveryRateLimitFilter,
-            ObjectMapper objectMapper) {
-        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
-        this.discoveryRateLimitFilter = discoveryRateLimitFilter;
-        this.objectMapper = objectMapper;
-    }
-
-    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, ObjectMapper objectMapper) {
-        this(jwtAuthenticationFilter, null, objectMapper);
-    }
-
-    @Value("${cors.allowed-origins:}")
+    @Value("${cors.allowed-origins:http://localhost:5173,http://localhost:5174}")
     private String allowedOrigins;
 
     @Bean
@@ -92,8 +81,9 @@ public class SecurityConfig {
                         .requestMatchers("/auth/me", "/profile/**", "/applications/**").authenticated()
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(discoveryRateLimitFilter, UsernamePasswordAuthenticationFilter.class)
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                // Filter ordering: JwtAuthenticationFilter MUST run BEFORE DiscoveryRateLimitFilter
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(discoveryRateLimitFilter, JwtAuthenticationFilter.class);
 
         return http.build();
     }
@@ -121,14 +111,16 @@ public class SecurityConfig {
         return source;
     }
 
-    private AuthenticationEntryPoint customAuthenticationEntryPoint() {
+    @Bean
+    public AuthenticationEntryPoint customAuthenticationEntryPoint() {
         return (request, response, authException) -> {
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            log.warn("Unauthorized request to '{}': {}", request.getRequestURI(), authException.getMessage());
+            response.setStatus(HttpStatus.UNAUTHORIZED.value());
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 
             ApiError error = ApiError.builder()
                     .status(HttpStatus.UNAUTHORIZED.value())
-                    .message("Unauthorized: Full authentication is required to access this resource")
+                    .message("Unauthorized access. Please provide a valid Bearer token.")
                     .timestamp(LocalDateTime.now())
                     .build();
 
@@ -136,9 +128,11 @@ public class SecurityConfig {
         };
     }
 
-    private AccessDeniedHandler customAccessDeniedHandler() {
+    @Bean
+    public AccessDeniedHandler customAccessDeniedHandler() {
         return (request, response, accessDeniedException) -> {
-            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            log.warn("Access denied for request to '{}': {}", request.getRequestURI(), accessDeniedException.getMessage());
+            response.setStatus(HttpStatus.FORBIDDEN.value());
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);
 
             ApiError error = ApiError.builder()

@@ -237,15 +237,18 @@ public class AdzunaJobSource implements JobSource {
 
     private LocalDate parseDate(String dateStr) {
         if (dateStr == null || dateStr.isBlank()) {
-            return LocalDate.now();
+            return null;
         }
         try {
             return LocalDateTime.parse(dateStr, DateTimeFormatter.ISO_DATE_TIME).toLocalDate();
         } catch (Exception e) {
             try {
-                return LocalDate.parse(dateStr.substring(0, 10));
+                if (dateStr.length() >= 10) {
+                    return LocalDate.parse(dateStr.substring(0, 10));
+                }
+                return null;
             } catch (Exception ex) {
-                return LocalDate.now();
+                return null;
             }
         }
     }

@@ -15,9 +15,9 @@ DOT Field helps candidates discover relevant job opportunities, analyze job requ
 
 ## Tech Stack
 
-- **Frontend**: React 19, Vite, React Router DOM, CSS3 (Glassmorphism & Micro-animations)
+- **Frontend**: React 19, Vite, React Router DOM, Vanilla CSS3 (Glassmorphism & Micro-animations)
 - **Backend**: Java 21, Spring Boot 3.4.1 (Web, Data JPA, Security, Validation, Flyway)
-- **Security**: Spring Security 6, JJWT (0.12.6), BCrypt Password Hashing, Stateless Sessions
+- **Security**: Spring Security 6, JJWT (0.12.6), BCrypt Password Hashing, HS256 (HMAC-SHA256) JWT Validation, Stateless Sessions
 - **Database**: PostgreSQL (Production/Dev), H2 (In-Memory Unit Testing)
 
 ---
@@ -31,19 +31,23 @@ The application requires environment variables in production and development. Co
 | `DB_URL` | PostgreSQL JDBC connection URL | `jdbc:postgresql://localhost:5432/dot_field` |
 | `DB_USERNAME` | PostgreSQL database user | `postgres` |
 | `DB_PASSWORD` | PostgreSQL database password | *(Required — no hardcoded fallback)* |
-| `JWT_SECRET` | Secret key for HMAC-SHA256 JWT signing | *(Required for HS256 — min 32 chars)* |
+| `JWT_SECRET` | Secret key for HMAC-SHA256 JWT signing | *(Required for HS256 — min 32 chars / 256 bits)* |
 | `JWT_EXPIRATION` | Token expiration time in milliseconds | `86400000` (24h) |
-| `JWT_ALGORITHM` | JWT verification algorithm (`HS256` or `RS256`) | `HS256` |
-| `JWT_JWKS_URL` | Remote JWKS URL for RS256 token verification | *(Optional — 15m cache TTL)* |
-| `JWT_PUBLIC_KEY_PATH` | RSA public key string or path for RS256 | *(Optional)* |
+| `JWT_ALGORITHM` | JWT signing & verification algorithm | `HS256` |
 | `JOB_INGESTION_SCHEDULER_ENABLED` | Enables scheduled background job ingestion | `false` *(Disabled by default)* |
 | `JOB_CANONICALIZE_SCHEME` | Normalizes `http` and `https` scheme equivalence | `true` |
-| `RATE_LIMIT_DISCOVERY_CAPACITY` | Max requests for `/jobs/discover` per window | `5` |
+| `RATE_LIMIT_DISCOVERY_CAPACITY` | Max requests for `/jobs/discover` per window | `100` |
 | `RATE_LIMIT_DISCOVERY_REFILL_SECONDS` | Window duration for rate limiter refill | `60` |
-| `INITIAL_ADMIN_EMAIL` | Email designated for ADMIN role upon registration | `admin@example.com` |
+| `INITIAL_ADMIN_EMAIL` | Email designated for ADMIN role upon registration/startup | `admin@example.com` |
 | `CORS_ALLOWED_ORIGINS` | Allowed origins for CORS | `http://localhost:5173,http://localhost:5174` |
 | `SPRING_PROFILES_ACTIVE` | Active Spring profile (`dev` or `prod`) | `default` |
-| `COMPANY_CAREERS_ENABLED` | Enables Indian company career sources & public ATS feeds | `true` *(Active default)* |
+| `INDIANAPI_ENABLED` | Enables IndianAPI Jobs source adapter | `true` |
+| `INDIANAPI_KEY` | API Key for IndianAPI Jobs | *(Required if INDIANAPI_ENABLED=true)* |
+| `JOOBLE_ENABLED` | Enables Jooble Job Search source adapter | `true` |
+| `JOOBLE_API_KEY` | API Key for Jooble | *(Required if JOOBLE_ENABLED=true)* |
+| `ADZUNA_ENABLED` | Enables Adzuna India Job Search source adapter | `true` |
+| `ADZUNA_APP_ID` / `KEY` | Credentials for Adzuna India API | *(Required if ADZUNA_ENABLED=true)* |
+| `COMPANY_CAREERS_ENABLED` | Enables Indian company career sources & ATS feeds | `false` *(Disabled by default until credentials configured)* |
 | `REMOTIVE_ENABLED` | Enables Remotive secondary source (demoted) | `false` *(Disabled default)* |
 | `NAUKRI_ENABLED` | Enables Naukri Enterprise Partner API | `false` *(Requires Partner API keys)* |
 | `NAUKRI_CLIENT_ID` / `SECRET` | Naukri OAuth 2.0 Partner credentials | *(Required if NAUKRI_ENABLED=true)* |
@@ -54,7 +58,7 @@ The application requires environment variables in production and development. Co
 
 ---
 
-## 🇮🇳 Phase 13 — India-First Job Discovery Platform
+## 🇮🇳 Phase 13/14 — India-First Multi-Source Job Ingestion Platform
 
 DOT Field prioritizes legitimate Indian job opportunities and explicit India-remote roles across popular India-relevant sources while strictly adhering to terms of service and avoiding unauthorized HTML scraping.
 
@@ -62,7 +66,10 @@ DOT Field prioritizes legitimate Indian job opportunities and explicit India-rem
 
 | Source Adapter | Status Category | Access Method | Credentials Required |
 | -------------- | --------------- | ------------- | -------------------- |
-| **Company Career Pages** | `WORKING` | Public ATS & Structured Indian Employer Feeds (Razorpay, Swiggy, Flipkart, TCS, Infosys, Wipro) | None |
+| **IndianAPI Jobs** | `WORKING` | REST API (`jobs.indianapi.in`) | `INDIANAPI_KEY` |
+| **Jooble** | `WORKING` | REST API (`jooble.org/api`) | `JOOBLE_API_KEY` |
+| **Adzuna India** | `WORKING` | REST API (`api.adzuna.com` `co=in`) | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` |
+| **Company Career Pages** | `DISABLED / NOT CONFIGURED` | Structured ATS Employer Feeds | Credentials / Config required |
 | **Naukri.com** | `DISABLED — PARTNER ACCESS REQUIRED` | Enterprise OAuth 2.0 / Recruiter API | `NAUKRI_CLIENT_ID`, `NAUKRI_CLIENT_SECRET` |
 | **Foundit (Monster India)** | `DISABLED — PARTNER ACCESS REQUIRED` | Partner API | `FOUNDIT_CLIENT_ID`, `FOUNDIT_CLIENT_SECRET` |
 | **Indeed India** | `DISABLED — PARTNER ACCESS REQUIRED` | Publisher / Partner API (`co=in`) | `INDEED_PUBLISHER_ID` |
@@ -96,25 +103,14 @@ SPRING_PROFILES_ACTIVE=prod .\mvnw.cmd spring-boot:run
 - **Flyway Migration V6 (`V6__deduplication_fingerprint_unique_index.sql`)**:
   - Archives any pre-existing duplicate rows into `jobs_backup` table before enforcing partial unique index `ux_job_deduplication_fingerprint`.
   - Native atomic persistence in `JobDiscoveryPersistenceHelper` uses `JdbcTemplate` `INSERT ... ON CONFLICT (deduplication_fingerprint) DO UPDATE` to prevent race conditions during parallel ingestion runs.
-  
-> [!NOTE]
-> **Production DBA Manual Indexing Step**:
-> To avoid long table locks on high-traffic production databases, DB admins can create the index concurrently:
-> ```sql
-> -- 1. Detect duplicates
-> SELECT deduplication_fingerprint, COUNT(*) FROM jobs WHERE deduplication_fingerprint IS NOT NULL GROUP BY 1 HAVING COUNT(*) > 1;
-> -- 2. Run standalone dedupe script
-> -- scripts/detect_and_dedupe_fingerprints.sql
-> -- 3. Create index concurrently
-> CREATE UNIQUE INDEX CONCURRENTLY ux_job_deduplication_fingerprint ON jobs (deduplication_fingerprint) WHERE deduplication_fingerprint IS NOT NULL;
-> ```
 
 ---
 
 ## Rate Limiting & Security
 
-- **Discovery Rate Limiter**: Endpoints `/jobs/discover` and `/jobs/ingestion/run` are protected by Bucket4j rate limiting using a composite client key (`userId` for authenticated users, client IP address for unauthenticated requests). Exceeding limit returns `HTTP 429 Too Many Requests` with a `Retry-After` header.
-- **JWKS / RS256 Support**: Supports RS256 token verification via remote JWKS endpoints (`JWT_JWKS_URL`) or local RSA public keys with 15-minute TTL caching, falling back to HMAC (`JWT_SECRET`).
+- **Discovery & Auth Rate Limiter**: Endpoints `/jobs/discover`, `/jobs/ingestion/run`, `/auth/login`, and `/auth/register` are protected by Bucket4j rate limiting using a composite client key (`user:<email>` for authenticated users, client IP address for unauthenticated requests). Exceeding limit returns `HTTP 429 Too Many Requests` with a `Retry-After` header.
+- **Trusted Proxy Client IP Safety**: Client IP resolution defaults to `request.getRemoteAddr()`. Header `X-Forwarded-For` is evaluated ONLY if `rate.limiter.trusted-proxy.enabled=true`.
+- **JWT Security**: Signed & verified using `HS256` HMAC-SHA256 with mandatory minimum 256-bit secret key validation (`JWT_SECRET`).
 
 ---
 
@@ -129,7 +125,7 @@ docker run -p 8080:8080 -e DB_PASSWORD=your_pass -e JWT_SECRET=your_secret dotfi
 
 ### GitHub Actions CI Workflow
 
-The repository includes a GitHub Actions pipeline (`.github/workflows/ci.yml`) that automatically runs frontend static builds (`npm run build`) and backend unit test suites (`./mvnw test`) on pull requests and pushes to `main` or `feature/*` branches.
+The repository includes a GitHub Actions pipeline (`.github/workflows/ci.yml`) that automatically runs backend unit test suites (`./mvnw test`) and frontend static builds (`npm run build`) on pull requests and pushes to `main` branch.
 
 ---
 

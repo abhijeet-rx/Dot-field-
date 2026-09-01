@@ -4,6 +4,7 @@ import com.dotfield.dto.*;
 import com.dotfield.entity.EmploymentType;
 import com.dotfield.entity.JobStatus;
 import com.dotfield.entity.RemoteType;
+import com.dotfield.exception.BadRequestException;
 import com.dotfield.service.JobExtractionService;
 import com.dotfield.service.JobMatchingService;
 import com.dotfield.service.JobService;
@@ -48,6 +49,13 @@ public class JobController {
             @RequestParam(required = false) EmploymentType employmentType,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+
+        if (page < 0) {
+            throw new BadRequestException("Page index must be >= 0. Received: " + page);
+        }
+        if (size < 1 || size > 100) {
+            throw new BadRequestException("Page size must be between 1 and 100. Received: " + size);
+        }
 
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         PagedResponse<JobResponse> jobs = jobService.getAllJobs(status, company, source, remoteType, employmentType, pageable);
